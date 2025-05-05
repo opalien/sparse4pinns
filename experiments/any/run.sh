@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --array=1-500%10
+#SBATCH --array=1-500%20
 #SBATCH --job-name=sparse4pinn
 #SBATCH --partition=besteffort
 #SBATCH --nodes=1                # nombre de noeuds
@@ -11,7 +11,6 @@
 #SBATCH --error=hs_slurm/dcv_hist/err/slurm-%A_%a.txt
 #SBATCH --mail-type=ALL
 #SBATCH --requeue
-#SBATCH --nodelist=cassiopee1 # Ajout pour spécifier le nœud
 
 # export TMPDIR=/scratch/<project>/tmp
 
