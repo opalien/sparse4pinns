@@ -1,6 +1,5 @@
 torch 
 numpy 
-ipython 
 scipy 
 einops 
 ipython 
