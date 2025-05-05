@@ -11,6 +11,7 @@
 #SBATCH --error=hs_slurm/dcv_hist/err/slurm-%A_%a.txt
 #SBATCH --mail-type=ALL
 #SBATCH --requeue
+#SBATCH --nodelist=cassiopee1 # Ajout pour spécifier le nœud
 
 # export TMPDIR=/scratch/<project>/tmp
 
