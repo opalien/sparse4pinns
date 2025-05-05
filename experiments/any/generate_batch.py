@@ -1,7 +1,7 @@
 import os
 
-M = range(50)
-K = range(4)
+M = range(1, 50)
+K = range(1, 4)
 epoch = 250
 rep = 10
 
