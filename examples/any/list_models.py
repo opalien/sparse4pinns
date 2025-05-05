@@ -62,9 +62,9 @@ list_models = {
         "bounds": [[0, 1], [0, 1]]
     },
 
-    "burger": {
-        "pde": burger_pde,
-        "solution": burger_interpolator.evaluate,
-        "bounds": [[0, 1], [0, 1]]
-    }
+#    "burger": {
+#        "pde": burger_pde,
+#        "solution": burger_interpolator.evaluate,
+#        "bounds": [[0, 1], [0, 1]]
+#    }
 }

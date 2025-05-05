@@ -183,7 +183,7 @@ def solve_burger(T: float=1.0, num_steps: int=50, nu: float=0.01 / math.pi, nx: 
 if __name__ == '__main__':
     pickle_path = os.path.join(SOLVER_DIR, 'burger_solution.pkl')
     print('--- Step 1: Run simulation and save interpolator ---')
-    saved_path = solve_burger(T=1.0, num_steps=10000, nx=10000, output_pickle_file=pickle_path)
+    saved_path = solve_burger(T=1.0, num_steps=100, nx=100, output_pickle_file=pickle_path)
     if saved_path and os.path.exists(saved_path):
         print('\n--- Step 2: Load and use the interpolator ---')
         try:
