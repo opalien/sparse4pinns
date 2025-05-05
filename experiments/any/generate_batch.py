@@ -5,8 +5,8 @@ K = range(4)
 epoch = 250
 rep = 10
 
-if os.path.exists("params.txt"):
-    os.remove("params.txt")
+if os.path.exists("params"):
+    os.remove("params")
 
 for (m, k) in [(m, k) for m in M for k in K]:
     with open(f"params", "a") as f:
