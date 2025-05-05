@@ -46,7 +46,7 @@ CMD=$"srun python run.py ${PARAMS}"
 
 echo "start"
 echo "$PARAMS"
-source ../../venv/bin/activate # change to your virtual environment
+source ../../env/bin/activate # change to your virtual environment
 echo "$PARAMS_ID|$JOB_NAME|$SLURM_SUBMIT_DIR|$CMD" >> $BATCH_HIST
 $CMD
 deactivate
