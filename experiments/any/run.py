@@ -80,6 +80,8 @@ if __name__ == "__main__":
             p_model["bounds"][0][1]
         )
 
+        print(f"{train_dataset.elements[:10]=} \n \n {train_dataset.colloc[:10]=} \n \n {test_dataset.elements[:10]=} \n \n")
+
         train_dataloader  = train_dataset.get_dataloader(200)
         test_dataloader = test_dataset.get_dataloader(200)
 

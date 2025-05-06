@@ -4,6 +4,6 @@ __pycache__/
 .vscode/
 *.plk
 *.pkl
-.venv
-.json
-.jsonl
+*.venv
+*.json
+*.jsonl
