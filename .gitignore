@@ -5,3 +5,5 @@ __pycache__/
 *.plk
 *.pkl
 .venv
+.json
+.jsonl
