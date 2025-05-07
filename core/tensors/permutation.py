@@ -154,21 +154,17 @@ class PermutationTensor(TensorLike):
 
 
 class BitRevPermutationTensor(PermutationTensor):
-
-
-    def __new__(cls, n: int):
-        if (sqrt_n:=int(math.isqrt(n)))**2 != n:
+    def __init__(self, n: int, device: torch.device | str | None = None):
+        if (sqrt_n := int(math.isqrt(n)))**2 != n:
             raise ValueError("n must be a perfect square")
         
-        data = bit_rev(n)
-        instance = data.as_subclass(cls)
-        # Set attributes directly in __new__
-        instance.n = n
-        instance.sqrt_n = sqrt_n
-        if instance.sqrt_n**2 != n: # Redundant check, but kept for consistency
-            raise ValueError("n must be a perfect square")
-        return instance
+        # Create the initial range tensor directly on the specified device
+        p_range = torch.arange(n, device=device)
+        # Rearrange. The output p_br will be on the same device as p_range.
+        p_br = rearrange(p_range, "(n1 m) -> (m n1)", n1=sqrt_n, m=sqrt_n)
         
+        super().__init__(p_br) # p_br is now on the specified device
+        self.n = n
 
     def __matmul__(self, other: Tensor | PermutationTensor | Tensorable) -> Tensor:
         return self._matmul(self, other) # type: ignore
@@ -231,10 +227,10 @@ class BitRevPermutationTensor(PermutationTensor):
 
 
 
-def bit_rev(n: int) -> PermutationTensor:
+def bit_rev(n: int, device: torch.device | str | None = None) -> PermutationTensor:
     if (sqrt_n:=int(math.isqrt(n)))**2 != n:
         raise ValueError("n must be a perfect square")
     
-    p = torch.tensor([i for i in range(n)])
-    p_br = rearrange(p, "(n m) -> (m n)", n=sqrt_n, m=sqrt_n)
+    p_range = torch.arange(n, device=device)
+    p_br = rearrange(p_range, "(n1 m) -> (m n1)", n1=sqrt_n, m=sqrt_n)
     return PermutationTensor(p_br)

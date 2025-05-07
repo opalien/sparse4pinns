@@ -27,11 +27,17 @@ class STEAMTensor(TensorLike):
 
 
     def __init__(self, tensor: Tensor, permutations: Tensor, *args, **kwargs): # type: ignore
+        _device = tensor.device
+        if permutations.device != _device:
+            # Ou lever une erreur, ou déplacer permutations. Pour l'instant, avertissement.
+            print(f"Warning: STEAMTensor received tensor on {tensor.device} but permutations on {permutations.device}. Moving permutations.")
+            permutations = permutations.to(_device)
+            
         self.m: int = tensor.shape[1]
         self.n: int = self.m**2
 
         self.permutations = permutations
-        self.Pbar = BitRevPermutationTensor(self.n)
+        self.Pbar = BitRevPermutationTensor(self.n, device=_device)
 
     
     @property 
@@ -142,50 +148,75 @@ class STEAMTensor(TensorLike):
             raise ValueError("Tensor must be 2D")
         
         n = A.shape[0]
-        if ( m:=math.isqrt(n) )**2 != n :
+        if ( m_sqrt:=math.isqrt(n) )**2 != n :
             raise ValueError(f"Input tensor must be perfect square, but got shape {A.shape}")
+        m = m_sqrt # m est la racine de n pour STEAM
+        _device = A.device
 
-        Pbar = bit_rev(n).dense
-        P0 = bit_rev(n).dense
-        P2 = bit_rev(n).dense
-        X0 = bit_rev(n).dense
-        X2 = bit_rev(n).dense
+        # Initialize permutations and other learnable/intermediate tensors on the correct device
+        Pbar_obj = BitRevPermutationTensor(n, device=_device)
+        Pbar_dense = Pbar_obj.dense
+        
+        # Initializing P0, P2 as identity matrices for learnable permutations might be more standard
+        # Or, if they are truly meant to start as bit-reversal, clone from Pbar_dense
+        # Assuming they start close to bit-reversal for this example, but require grad for STE.
+        P0 = Pbar_dense.clone().detach().requires_grad_(True)
+        P2 = Pbar_dense.clone().detach().requires_grad_(True)
+        # X0, X2 are pre-images for STE, also need to be on the correct device and require grad
+        X0 = Pbar_dense.clone().detach().requires_grad_(True) 
+        X2 = Pbar_dense.clone().detach().requires_grad_(True)
 
-        R, L = blockdiag_butterfly_project(A @ P0.T)
+        # Initialize R and L (factors of the core matrix) on the correct device
+        # blockdiag_butterfly_project returns factors already on the device of its input.
+        # Initial projection: A_proj = Pbar @ P2.T @ A @ P0.T (target for R, L)
+        # Or simpler: R, L are factors of (A @ P0.T) or (Pbar.T @ A @ P0.T)
+        # The paper projects M_hat = Pbar P_2^T A P_0^T Pbar
+        # Here, the code seems to use: R, L = blockdiag_butterfly_project(A @ P0_current.T)
+        # Let's stick to the loop's first projected matrix for initial R, L
+        R_curr, L_curr = blockdiag_butterfly_project(A @ P0.data.T, sizes=(m,m)) # Use .data for initial non-grad state
 
-        L_best, R_best, P0_best, P2_best = None, None, None, None
+        L_best, R_best, P0_best, P2_best = L_curr.clone(), R_curr.clone(), P0.data.clone(), P2.data.clone()
         norm_best = float("inf")
 
         for t in range(T):
-            #print("t = ", t)
-            nu = 1/(alpha 
-                                         * torch.norm(BlockDiagTensor(L).dense @  Pbar @ BlockDiagTensor(R).dense)**2
-                                        )
+            L_dense = BlockDiagTensor(L_curr).dense # Ensure BlockDiagTensor.dense respects device
+            R_dense = BlockDiagTensor(R_curr).dense
+            P0_current_dense = P0.data # From STE, already a permutation matrix
+            P2_current_dense = P2.data
 
-            X0 -= nu*(
-                        ( P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense).T 
-                        @ ((P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0) - A) 
-                    )
+            # Gradient update step, ensure all ops are on _device
+            term_matrix = P2_current_dense @ L_dense @ Pbar_dense @ R_dense @ P0_current_dense
+            error_matrix = term_matrix - A
+            
+            # Simplified nu calculation as in the original snippet (check for stability/correctness)
+            # The norm calculation should be on tensors residing on _device
+            norm_factor_denom = torch.norm(L_dense @ Pbar_dense @ R_dense)**2
+            nu = 1 / (alpha * norm_factor_denom) if norm_factor_denom > 1e-9 else 1.0/(alpha*1e-9)
+            
+            # Update X0, X2
+            grad_X0_term = (P2_current_dense @ L_dense @ Pbar_dense @ R_dense).T @ error_matrix
+            X0 = X0 - nu * grad_X0_term
 
-            X2 -= nu*( 
-                        ( (P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0) - A) 
-                        @ (BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0).T 
-                    )
-
-            P0 = PermutationSTE.apply(X0)
+            grad_X2_term = error_matrix @ (L_dense @ Pbar_dense @ R_dense @ P0_current_dense).T
+            X2 = X2 - nu * grad_X2_term
+            
+            # Apply STE to get new P0, P2
+            P0 = PermutationSTE.apply(X0) # PermutationSTE.forward handles device
             P2 = PermutationSTE.apply(X2)
 
-            R, L = blockdiag_butterfly_project( Pbar @ P2.T @ A @ P0.T )
+            # Re-calculate R, L based on new P0, P2
+            # The projection target is Pbar @ P2.T @ A @ P0.T
+            target_for_RL = Pbar_dense @ P2.T @ A @ P0.T
+            R_curr, L_curr = blockdiag_butterfly_project(target_for_RL, sizes=(m,m))
 
-            
-            if (current_norm:=(torch.norm( (P2 @ BlockDiagTensor(L).dense @  Pbar @ BlockDiagTensor(R).dense @ P0) - A).item()/torch.norm(A))) < norm_best:
+            current_norm = (torch.norm( (P2 @ BlockDiagTensor(L_curr).dense @  Pbar_dense @ BlockDiagTensor(R_curr).dense @ P0) - A).item())
+            current_norm /= torch.norm(A).item()
+
+            if current_norm < norm_best:
                 norm_best = current_norm
-                L_best = L
-                R_best = R
-                P0_best = P0
-                P2_best = P2
+                L_best, R_best, P0_best, P2_best = L_curr.clone(), R_curr.clone(), P0.clone(), P2.clone()
+                # print(f"STEAM from_dense iter {t}: current norm = {current_norm:.4e}, best norm = {norm_best:.4e}")
 
-                print("current norm =", current_norm, "best norm =", norm_best)
-
-
-        return STEAMTensor(torch.stack([R_best, L_best]), torch.stack([P0_best, P2_best]))
+        stacked_factors = torch.stack([R_best, L_best]) # Will be on _device
+        stacked_perms = torch.stack([P0_best, P2_best]) # Will be on _device
+        return STEAMTensor(stacked_factors, stacked_perms)

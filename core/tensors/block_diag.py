@@ -21,8 +21,16 @@ class BlockDiagTensor(TensorLike):
 
     @property
     def dense(self) -> Tensor:
-        blocks = torch.unbind(self, dim=0)
-        return torch.block_diag(*blocks).as_subclass(Tensor) # type: ignore
+        _device = self.device 
+        _dtype = self.dtype
+        k, m, _ = self.shape # k blocks, each m x m (assuming square blocks from typical usage)
+        n = k * m
+
+        res = torch.zeros((n, n), dtype=_dtype, device=_device)
+        
+        for i in range(k):
+            res[i*m:(i+1)*m, i*m:(i+1)*m] = self[i, :, :]
+        return res
 
 
     def __matmul__(self, other: Tensor | TensorLike) -> Tensor: # type: ignore
@@ -108,4 +116,22 @@ class BlockDiagTensor(TensorLike):
     @staticmethod
     def zeros(nblocks: int, b1: int, b2: int) -> "BlockDiagTensor":
         return BlockDiagTensor(torch.zeros(nblocks, b2, b1))
+    
+    @staticmethod
+    def from_dense(tensor: Tensor, k: int) -> "BlockDiagTensor":
+        _device = tensor.device
+        _dtype = tensor.dtype
+        n = tensor.shape[0]
+        if n % k != 0:
+            raise ValueError(f"k must divide n, but {k} does not divide {n}")
+        m = n // k
+        
+        # Extract blocks and ensure they are on the correct device before stacking
+        blocks = [tensor[i*m:(i+1)*m, i*m:(i+1)*m].clone() for i in range(k)]
+        # torch.stack will place the new tensor on the device of the tensors in the list,
+        # assuming they are all on the same device (which they are, as they come from 'tensor').
+        # If there was a mix, it would default to CPU or error.
+        # Explicitly moving to _device after stack if necessary, or ensuring blocks are on _device.
+        # Since blocks are slices of tensor, they are already on tensor.device.
+        return BlockDiagTensor(torch.stack(blocks).to(dtype=_dtype, device=_device))
     
