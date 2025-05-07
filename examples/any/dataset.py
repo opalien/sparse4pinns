@@ -1,6 +1,5 @@
 import torch
 from torch import Tensor
-
 from typing import Callable
 
 from core.datasets.pinn_dataset import PINNDataset
@@ -13,12 +12,10 @@ class TrainAnyDataset(PINNDataset):
         shape = torch.tensor(shape, dtype=torch.float32)
         self.u = u
 
-        # shape = [(-1, 1), (0, 2)]
-        
-        
+        # shape = [(-1, 1), (0, 2)]       
 
         # examples points
-        elements: list[Tensor, Tensor] = [(
+        elements: list[tuple[Tensor, Tensor]] = [(
             a:=torch.concatenate([torch.zeros(1), torch.rand(len(shape))*(shape[:, 1] - shape[:, 0]) + shape[:, 0]]),
             self.u(a)
         ) for _ in range(n_elements)]
@@ -60,7 +57,7 @@ class TestAnyDataset(PINNDataset):
         shape = torch.tensor(shape, dtype=torch.float32)
         self.u = u
 
-        elements: list[Tensor, Tensor] = [(
+        elements: list[tuple[Tensor, Tensor]] = [(
             a:=torch.concatenate([torch.rand(1)*t_max, torch.rand(len(shape))*(shape[:, 1] - shape[:, 0]) + shape[:, 0]]),
             self.u(a)
         ) for _ in range(n_elements)]

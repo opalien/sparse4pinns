@@ -1,10 +1,10 @@
 import fenics as fn
+import torch
 import numpy as np
 import math
 import os
 import pickle
 import matplotlib.pyplot as plt
-from numpy.typing import NDArray
 from typing import Optional, Tuple
 import sys
 import time # Pour mesurer le temps
@@ -62,31 +62,33 @@ def load_solution_interpolator(pickle_path: str) -> Optional['BurgerSolutionInte
 
 
 # --- Classe BurgerSolutionInterpolator ---
-# Reste structurellement la même, mais sera initialisée avec des données potentiellement plus précises
 class BurgerSolutionInterpolator:
-    def __init__(self, times: NDArray[np.float64], spatial_coords: NDArray[np.float64], solution_values: NDArray[np.float64]):
+    def __init__(self, times: torch.Tensor, spatial_coords: torch.Tensor, solution_values: torch.Tensor):
         """
         Initialise l'interpolateur avec les données de simulation.
         Assure que les coordonnées spatiales sont triées.
         """
-        if not all(isinstance(arr, np.ndarray) for arr in [times, spatial_coords, solution_values]):
-            raise TypeError('Inputs times, spatial_coords, and solution_values must be NumPy arrays.')
+        if not all(isinstance(arr, torch.Tensor) for arr in [times, spatial_coords, solution_values]):
+            raise TypeError('Inputs times, spatial_coords, and solution_values must be PyTorch Tensors.')
 
-        # Assurer que les coordonnées spatiales sont triées (essentiel pour np.interp)
-        if not np.all(np.diff(spatial_coords) >= 0):
-            print("Warning: Spatial coordinates were not sorted. Sorting them now.")
-            sort_indices = np.argsort(spatial_coords)
-            self.spatial_coords: NDArray[np.float64] = spatial_coords[sort_indices]
+        # Assurer que les coordonnées spatiales sont triées (essentiel pour interpolation)
+        # torch.diff produces a tensor of length n-1. Add a positive value to ensure all diffs are checked.
+        if not torch.all(torch.diff(spatial_coords) >= -1e-9): # Allow for small negative due to float precision before sort
+            print("Warning: Spatial coordinates were not sorted or had issues. Sorting them now.")
+            sort_indices = torch.argsort(spatial_coords)
+            self.spatial_coords: torch.Tensor = spatial_coords[sort_indices]
             # Assurer que les valeurs de solution correspondent aux coordonnées triées
-            if solution_values.shape[1] == len(spatial_coords):
-                 self.solution_values: NDArray[np.float64] = solution_values[:, sort_indices]
+            if solution_values.shape[1] == spatial_coords.shape[0]:
+                 self.solution_values: torch.Tensor = solution_values[:, sort_indices]
             else:
                  raise ValueError("Mismatch between spatial_coords and solution_values dimensions after attempting sort.")
         else:
             self.spatial_coords = spatial_coords
             self.solution_values = solution_values
 
-        self.times: NDArray[np.float64] = times
+        self.times: torch.Tensor = times
+        self.device = self.times.device # Store device for later use
+        self.dtype = self.times.dtype   # Store dtype
 
         # Validations des dimensions
         if self.times.ndim != 1 or self.spatial_coords.ndim != 1 or self.solution_values.ndim != 2:
@@ -97,23 +99,96 @@ class BurgerSolutionInterpolator:
             raise ValueError(f'Mismatch spatial points ({self.spatial_coords.shape[0]}) vs solution columns ({self.solution_values.shape[1]}).')
 
         # Stockage des métadonnées utiles
-        self.num_time_steps: int = len(self.times)
-        self.num_spatial_points: int = len(self.spatial_coords)
-        self.t_min: float = self.times.min()
-        self.t_max: float = self.times.max()
-        self.xmin: float = self.spatial_coords.min()
-        self.xmax: float = self.spatial_coords.max()
+        self.num_time_steps: int = self.times.shape[0]
+        self.num_spatial_points: int = self.spatial_coords.shape[0]
+        self.t_min: float = torch.min(self.times).item()
+        self.t_max: float = torch.max(self.times).item()
+        self.xmin: float = torch.min(self.spatial_coords).item()
+        self.xmax: float = torch.max(self.spatial_coords).item()
 
         print(f"Interpolator initialized: {self.num_time_steps} time steps ({self.t_min:.2f} to {self.t_max:.2f}), "
               f"{self.num_spatial_points} spatial points ({self.xmin:.2f} to {self.xmax:.2f})")
 
-    def evaluate(self, points: NDArray[np.float64]) -> NDArray[np.float64]:
+    def _torch_interp1d(self, x_query: torch.Tensor, xp: torch.Tensor, fp_matrix: torch.Tensor) -> torch.Tensor:
+        """
+        Vectorized 1D linear interpolation similar to np.interp.
+        x_query: (N,) tensor of x values to interpolate.
+        xp: (M,) tensor of x data points, sorted.
+        fp_matrix: (N, M) tensor of y data points (each row corresponds to an x_query's profile).
+        Returns: (N,) tensor of interpolated values.
+        """
+        N = x_query.shape[0]
+        M = xp.shape[0]
+        results = torch.empty_like(x_query, dtype=self.dtype, device=self.device)
+
+        # Ensure xp has at least one point
+        if M == 0:
+            raise ValueError("xp (spatial_coords) must not be empty.")
+        if M == 1: # All points interpolate to the single value in fp_matrix
+            return fp_matrix[:, 0]
+
+
+        # Handle extrapolation
+        left_extrap_mask = x_query <= xp[0]
+        results[left_extrap_mask] = fp_matrix[left_extrap_mask, 0]
+
+        right_extrap_mask = x_query >= xp[-1]
+        results[right_extrap_mask] = fp_matrix[right_extrap_mask, M - 1]
+        
+        # Interpolation for points in between
+        interp_mask = ~(left_extrap_mask | right_extrap_mask)
+
+        if torch.any(interp_mask):
+            x_curr = x_query[interp_mask]
+            fp_curr = fp_matrix[interp_mask, :]
+
+            # Find indices i such that xp[i] <= x_curr < xp[i+1]
+            # searchsorted(xp, x_curr, side='right') gives k s.t. all xp[j < k] < x_curr and all xp[j >= k] >= x_curr
+            # So, the index for the left point xp[i] is k-1.
+            right_indices = torch.searchsorted(xp, x_curr, side='right')
+            
+            # Clamp to avoid issues if x_curr is exactly xp[-1] (handled by right_extrap_mask) or xp[0]
+            # For interpolation, left_indices must be in [0, M-2]
+            left_indices = torch.clamp(right_indices - 1, 0, M - 2)
+            # right_indices corresponding to left_indices+1
+            clamped_right_indices = left_indices + 1
+
+            xp_left = xp[left_indices]
+            xp_right = xp[clamped_right_indices]
+            
+            # Gather fp values corresponding to left and right indices for each point in x_curr
+            # fp_curr is (num_interp_points, M)
+            # left_indices is (num_interp_points,)
+            # We need to select elements from each row of fp_curr based on indices in left_indices
+            fp_left = fp_curr[torch.arange(fp_curr.shape[0], device=self.device), left_indices]
+            fp_right = fp_curr[torch.arange(fp_curr.shape[0], device=self.device), clamped_right_indices]
+
+            denom = xp_right - xp_left
+            
+            # Where denom is zero (e.g. xp has duplicate values), result is fp_left
+            # This also handles if x_curr falls exactly on xp_left
+            ratio = torch.zeros_like(denom, dtype=self.dtype, device=self.device)
+            valid_denom_mask = denom > 1e-9 # Avoid division by zero or tiny denominators
+            
+            ratio[valid_denom_mask] = (x_curr[valid_denom_mask] - xp_left[valid_denom_mask]) / denom[valid_denom_mask]
+            # Ensure ratio is between 0 and 1 for stability if not perfectly handled by masks
+            ratio = torch.clamp(ratio, 0.0, 1.0)
+
+            interp_values = fp_left + ratio * (fp_right - fp_left)
+            results[interp_mask] = interp_values
+            
+        return results
+
+    def evaluate(self, points: torch.Tensor) -> torch.Tensor:
         """Évalue la solution interpolée aux points (t, x) donnés."""
-        if not isinstance(points, np.ndarray):
+        if not isinstance(points, torch.Tensor):
             try:
-                points = np.asarray(points, dtype=np.float64)
+                points = torch.as_tensor(points, dtype=self.dtype, device=self.device)
             except Exception as e:
-                raise TypeError(f"Input 'points' must be a NumPy array or convertible, got {type(points)}. Error: {e}")
+                raise TypeError(f"Input 'points' must be a PyTorch Tensor or convertible, got {type(points)}. Error: {e}")
+
+        original_device = points.device
+        points = points.to(device=self.device, dtype=self.dtype)
 
         # Gérer les entrées à point unique
         if points.ndim == 1:
@@ -125,15 +200,13 @@ class BurgerSolutionInterpolator:
             raise ValueError(f"Input 'points' must be shape (N, 2), got shape {points.shape}")
 
         N = points.shape[0]
-        results = np.empty(N)
+        # results = torch.empty(N, dtype=self.dtype, device=self.device) # Will be created by _torch_interp1d
         times_req = points[:, 0]
         coords_req = points[:, 1]
 
         # --- Interpolation Temporelle (Linéaire) ---
-        # Trouver les indices de temps encadrant chaque temps requis
-        indices = np.searchsorted(self.times, times_req, side='right')
-        # Limiter les indices pour éviter les erreurs aux bords et gérer l'extrapolation constante
-        indices = np.clip(indices, 1, self.num_time_steps - 1)
+        indices = torch.searchsorted(self.times, times_req, side='right')
+        indices = torch.clip(indices, 1, self.num_time_steps - 1)
 
         idx0 = indices - 1
         idx1 = indices
@@ -141,51 +214,42 @@ class BurgerSolutionInterpolator:
         t0 = self.times[idx0]
         t1 = self.times[idx1]
 
-        # Éviter la division par zéro si dt est très petit ou nul
         dt_interval = t1 - t0
-        # Utiliser un masque pour la division sécurisée
-        valid_interval = dt_interval > 1e-15 # Tolérance pour éviter la division par zéro
+        valid_interval = dt_interval > 1e-15
 
-        # Calculer les poids pour l'interpolation linéaire temporelle
-        weight1 = np.zeros_like(times_req)
-        np.divide(times_req - t0, dt_interval, out=weight1, where=valid_interval)
-        # Si dt_interval est trop petit, weight1 reste 0, weight0 sera 1 (on prend la valeur à t0)
+        weight1 = torch.zeros_like(times_req, dtype=self.dtype, device=self.device)
+        # Perform division only where valid_interval is true
+        safe_dt_interval = torch.where(valid_interval, dt_interval, torch.ones_like(dt_interval))
+        weight1 = torch.where(valid_interval, (times_req - t0) / safe_dt_interval, weight1)
 
         weight0 = 1.0 - weight1
 
-        # Gérer l'extrapolation (constante aux bords)
-        before_start = times_req < self.t_min
-        after_end = times_req > self.t_max
+        before_start = times_req < self.times[0] # Use actual first time step value
+        after_end = times_req > self.times[-1]   # Use actual last time step value
 
-        weight0[before_start] = 1.0 # Utiliser la solution initiale
+        weight0[before_start] = 1.0
         weight1[before_start] = 0.0
         idx0[before_start] = 0
-        idx1[before_start] = 0 # Évite l'erreur d'indice si before_start et valid_interval sont False en même temps
+        idx1[before_start] = 0 
 
-        weight0[after_end] = 0.0 # Utiliser la solution finale
+        weight0[after_end] = 0.0
         weight1[after_end] = 1.0
-        idx0[after_end] = self.num_time_steps - 1 # Utilise le dernier indice valide
+        idx0[after_end] = self.num_time_steps - 1
         idx1[after_end] = self.num_time_steps - 1
 
-        # Extraire les solutions aux temps t0 et t1
         values0 = self.solution_values[idx0, :]
         values1 = self.solution_values[idx1, :]
 
-        # Interpoler linéairement en temps
-        # Utilise le broadcasting: (N,) * (N, M) -> (N, M)
-        values_t_interp = weight0[:, np.newaxis] * values0 + weight1[:, np.newaxis] * values1
+        values_t_interp = weight0.unsqueeze(1) * values0 + weight1.unsqueeze(1) * values1
 
         # --- Interpolation Spatiale (Linéaire) ---
-        # Pour chaque temps interpolé, interpoler spatialement
-        for i in range(N):
-            x_req = coords_req[i]
-            values_at_t = values_t_interp[i, :]
-            # np.interp gère l'extrapolation constante aux bords spatiaux par défaut
-            results[i] = np.interp(x_req, self.spatial_coords, values_at_t)
+        # Vectorized call to the new interpolation function
+        results = self._torch_interp1d(coords_req, self.spatial_coords, values_t_interp)
+        
+        return results.to(original_device)
 
-        return results
 
-    def __call__(self, points: NDArray[np.float64]) -> NDArray[np.float64]:
+    def __call__(self, points: torch.Tensor) -> torch.Tensor:
         """Permet d'appeler l'objet directement pour l'évaluation."""
         return self.evaluate(points)
 
@@ -228,127 +292,101 @@ def solve_burger(T: float=1.0, num_steps: int=500, nu: float=0.01 / math.pi, nx:
     V = fn.FunctionSpace(mesh, 'P', 2) # *** Changement : P1 -> P2 ***
     print(f"Function space: P{V.ufl_element().degree()}, Number of DoFs: {V.dim()}")
 
-    # Obtenir les coordonnées des DoFs et les trier (important pour l'interpolateur)
-    dof_coordinates = V.tabulate_dof_coordinates()
-    # Pour P2, il peut y avoir des DoFs dupliqués aux mêmes coordonnées (sommets partagés)
-    # Nous voulons les coordonnées uniques triées pour l'interpolation spatiale finale.
-    # Cependant, la solution FEniCS est ordonnée selon les DoFs internes.
-    # Nous devons récupérer les valeurs aux coordonnées uniques *après* la simulation.
-    # Pour l'instant, gardons l'ordre des DoFs FEniCS, nous trierons à la fin.
-    fenics_dof_indices = np.arange(V.dim()) # Indices dans l'ordre FEniCS
+    dof_coordinates = V.tabulate_dof_coordinates() # This is a NumPy array
 
     # 2. Conditions aux Limites (Dirichlet u=0 aux bords)
     def boundary(x, on_boundary):
         return on_boundary
-    # Utilisation de fn.Constant pour une meilleure performance
     bc = fn.DirichletBC(V, fn.Constant(0.0), boundary)
 
     # 3. Condition Initiale
-    # Le degré de l'Expression doit être suffisant pour l'interpolation dans V (P2)
-    u_0_expr = fn.Expression('-sin(DOLFIN_PI*x[0])', degree=3) # *** Changement : degree=2 -> 3 (ou plus) ***
-    # u_n représente la solution au temps précédent (t_n)
+    u_0_expr = fn.Expression('-sin(DOLFIN_PI*x[0])', degree=3)
     u_n = fn.interpolate(u_0_expr, V)
 
     # 4. Formulation Variationnelle (Crank-Nicolson)
-    u = fn.Function(V)      # Solution au temps courant (t_{n+1}), l'inconnue
-    v = fn.TestFunction(V)  # Fonction test
-
-    # Terme intermédiaire pour Crank-Nicolson (moyenne temporelle)
-    u_mid = 0.5 * (u + u_n) # *** NOUVEAU : Moyenne pour CN ***
-
-    # Formulation faible : Intégrale( [(u - u_n)/dt]*v + [u_mid * grad(u_mid)]*v + [nu*grad(u_mid)]*grad(v) ) dx = 0
-    # Note: u * u.dx(0) est la forme forte. La forme faible standard pour u*u' est u*u'*v
-    # Pour la forme conservative (d/dx(0.5*u^2)), on peut écrire: -0.5 * u_mid**2 * v.dx(0) * dx + conditions de bord
-    # Ici, on garde la forme non-conservative u*u' * v qui est commune:
+    u = fn.Function(V)
+    v = fn.TestFunction(V)
+    u_mid = 0.5 * (u + u_n)
     F = (
-        (u - u_n) / dt * v * fn.dx                     # Dérivée temporelle
-        + u_mid * u_mid.dx(0) * v * fn.dx             # Terme advectif non-linéaire (évalué à t_mid)
-        + nu * fn.dot(fn.grad(u_mid), fn.grad(v)) * fn.dx # Terme diffusif (évalué à t_mid)
-    ) # *** Changement : u -> u_mid dans les termes spatiaux ***
-
-    # 5. Calcul du Jacobien pour le solveur de Newton
-    J = fn.derivative(F, u) # FEniCS calcule la dérivée automatiquement
-
-    # 6. Problème Non-linéaire Variationnel et Solveur
+        (u - u_n) / dt * v * fn.dx
+        + u_mid * u_mid.dx(0) * v * fn.dx
+        + nu * fn.dot(fn.grad(u_mid), fn.grad(v)) * fn.dx
+    )
+    J = fn.derivative(F, u)
     problem = fn.NonlinearVariationalProblem(F, u, bc, J)
     solver = fn.NonlinearVariationalSolver(problem)
-
-    # Ajustement des paramètres du solveur de Newton pour une meilleure précision
     solver_prm = solver.parameters["newton_solver"]
-    solver_prm["relative_tolerance"] = 1e-8 # *** Changement : Tolérance plus stricte ***
-    solver_prm["absolute_tolerance"] = 1e-9 # *** Changement : Tolérance plus stricte ***
-    solver_prm["maximum_iterations"] = 30    # Augmenter si la convergence est difficile
-    solver_prm["relaxation_parameter"] = 1.0 # Pas de sous-relaxation par défaut
-    # solver_prm["linear_solver"] = "mumps" # Choisir un solveur linéaire si besoin ( MUMPS est robuste)
+    solver_prm["relative_tolerance"] = 1e-8
+    solver_prm["absolute_tolerance"] = 1e-9
+    solver_prm["maximum_iterations"] = 30
+    solver_prm["relaxation_parameter"] = 1.0
     print(f"Newton solver tolerances: Rel={solver_prm['relative_tolerance']:.1e}, Abs={solver_prm['absolute_tolerance']:.1e}")
 
     # 7. Boucle Temporelle
     times_list = [0.0]
-    # Stocker les coefficients de la solution dans l'ordre des DoFs FEniCS
-    solution_coeffs_list = [u_n.vector().get_local().copy()]
+    solution_coeffs_list = [u_n.vector().get_local().copy()] # List of NumPy arrays
 
     t = 0.0
     print(f"Starting time stepping loop for {num_steps} steps...")
-    progress_interval = max(1, num_steps // 20) # Afficher la progression ~20 fois
+    progress_interval = max(1, num_steps // 20)
 
     for n in range(num_steps):
         t += dt
-
-        # Résoudre pour u à t_{n+1}
         try:
             num_iter, converged = solver.solve()
             if not converged:
                  print(f"\nWARNING: Newton solver did NOT converge at step {n+1}, t={t:.4f} after {num_iter} iterations.")
-                 # Que faire ici ? Arrêter ? Continuer avec la solution non convergée ?
-                 # Pour l'instant, on continue mais on le signale.
         except Exception as e:
              print(f"\nERROR: FEniCS solver failed at step {n+1}, t={t:.4f}")
              print(f"Error message: {e}")
-             # Peut-être sauvegarder l'état actuel pour le débogage
-             # fn.File("debug_u_fail.pvd") << u
-             # fn.File("debug_un_fail.pvd") << u_n
-             return None # Arrêter la simulation en cas d'erreur grave
-
-        # Mettre à jour la solution précédente pour le pas suivant
+             return None
         u_n.assign(u)
-
-        # Stocker les résultats
         times_list.append(t)
         solution_coeffs_list.append(u.vector().get_local().copy())
-
-        # Afficher la progression
         if (n + 1) % progress_interval == 0 or n == num_steps - 1:
             print(f"  Step {n+1}/{num_steps} completed (t = {t:.4f}) - Newton iters: {num_iter}")
-
 
     simulation_time = time.time() - start_time
     print(f'FEniCS simulation finished. Total time: {simulation_time:.2f} seconds.')
 
-    # 8. Post-traitement et Sauvegarde
-    times_array = np.array(times_list)
-    # solution_values_array contient les coeffs DoF ordonnés par FEniCS
-    solution_values_array_fenics_order = np.vstack(solution_coeffs_list)
+    # 8. Post-traitement et Sauvegarde - Convert to PyTorch Tensors here
+    # Determine default dtype for PyTorch (typically float32 unless specified)
+    # We use float64 for consistency with original numpy code & FEniCS precision
+    tensor_dtype = torch.float64
 
-    # Obtenir les coordonnées uniques triées et les valeurs correspondantes
-    # pour l'interpolateur qui attend des coordonnées spatiales 1D triées.
-    unique_coords, unique_indices = np.unique(dof_coordinates[:, 0], return_index=True)
-    # Les valeurs de solution aux coordonnées uniques triées
-    solution_values_sorted_coords = solution_values_array_fenics_order[:, unique_indices]
-    spatial_coords_sorted = unique_coords # Coordonnées triées
+    times_tensor = torch.tensor(times_list, dtype=tensor_dtype)
+    
+    # solution_coeffs_list contains NumPy arrays. Stack them first.
+    solution_values_fenics_order_np = np.vstack(solution_coeffs_list)
+    solution_values_tensor_fenics_order = torch.from_numpy(solution_values_fenics_order_np).to(dtype=tensor_dtype)
 
-    print(f'Final data shape for interpolator: times({times_array.shape}), coords({spatial_coords_sorted.shape}), values({solution_values_sorted_coords.shape})')
+    # dof_coordinates is NumPy array from FEniCS
+    # Get unique sorted coordinates and their original indices from the FEniCS DoF ordering
+    # Using numpy for unique since it's already a numpy array and handles return_index
+    unique_coords_np, unique_indices_np = np.unique(dof_coordinates[:, 0], return_index=True)
+    
+    spatial_coords_sorted_tensor = torch.from_numpy(unique_coords_np).to(dtype=tensor_dtype)
+    # Use the NumPy indices to sort/select from the PyTorch tensor
+    solution_values_sorted_coords_tensor = solution_values_tensor_fenics_order[:, torch.from_numpy(unique_indices_np)]
+
+
+    print(f'Final data shape for interpolator: times({times_tensor.shape}), coords({spatial_coords_sorted_tensor.shape}), values({solution_values_sorted_coords_tensor.shape})')
 
     print('Creating interpolator object...')
     try:
-        interpolator = BurgerSolutionInterpolator(times=times_array, spatial_coords=spatial_coords_sorted, solution_values=solution_values_sorted_coords)
+        interpolator = BurgerSolutionInterpolator(times=times_tensor, 
+                                                spatial_coords=spatial_coords_sorted_tensor, 
+                                                solution_values=solution_values_sorted_coords_tensor)
     except Exception as e:
         print(f"Error creating BurgerSolutionInterpolator: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
     print(f'Saving interpolator to {output_pickle_file}...')
     try:
         with open(output_pickle_file, 'wb') as f:
-            pickle.dump(interpolator, f, protocol=pickle.HIGHEST_PROTOCOL) # Utiliser le protocole le plus élevé
+            pickle.dump(interpolator, f, protocol=pickle.HIGHEST_PROTOCOL)
         print('Save successful.')
         return output_pickle_file
     except Exception as e:
@@ -358,16 +396,14 @@ def solve_burger(T: float=1.0, num_steps: int=500, nu: float=0.01 / math.pi, nx:
 # --- Point d'entrée principal ---
 if __name__ == '__main__':
 
-    # Utiliser un nom de fichier reflétant les paramètres P2 et CN
-    pickle_filename = 'burger_solution.pkl'
+    pickle_filename = 'burger_solution.pkl' # Changed name to reflect torch usage
     pickle_path = os.path.join(SOLVER_DIR, pickle_filename)
 
     print('--- Step 1: Run simulation with P2 elements and Crank-Nicolson ---')
-    # Utilisation des paramètres par défaut de la fonction (nx=500, num_steps=500)
     saved_path = solve_burger(
         T=1.0,
-        num_steps=1000, # Ajustez si nécessaire
-        nx=1000,        # Ajustez si nécessaire
+        num_steps=5000,
+        nx=2000,
         nu=0.01 / math.pi,
         output_pickle_file=pickle_path
     )
@@ -383,52 +419,55 @@ if __name__ == '__main__':
 
             print('Load successful.')
 
-            # Points de test pour l'évaluation
-            test_points = np.array([
-                [0.15, 0.5],   # Intérieur du domaine, temps précoce
-                [0.5, 0.0],    # Milieu du domaine, temps intermédiaire
-                [0.9, -0.8],   # Près du bord gauche, temps tardif
-                [1.0, 0.2],    # Temps final
-                # Points potentiellement problématiques pour l'interpolateur
-                [0.0, 0.1],    # Temps initial exact
-                [1.0, -1.0],   # Coin espace-temps (bord)
-                [0.6, 1.0],    # Coin espace-temps (bord)
-                # Points hors limites pour tester l'extrapolation
-                [1.1, 0.1],    # Temps > T_max
-                [-0.1, 0.3],   # Temps < T_min
-                [0.6, -1.1],   # x < x_min
-                [0.7, 1.2]     # x > x_max
-            ])
+            # Determine device for test_points (e.g. cuda if available, else cpu)
+            # For this script, CPU is fine as FEniCS is CPU-bound
+            # and interpolator is now device-aware from its stored tensors.
+            # test_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            # print(f"Using device: {test_device} for test points")
+
+            # Points de test pour l'évaluation (as PyTorch tensor)
+            test_points_data = [
+                [0.15, 0.5], [0.5, 0.0], [0.9, -0.8], [1.0, 0.2],
+                [0.0, 0.1], [1.0, -1.0], [0.6, 1.0],
+                [1.1, 0.1], [-0.1, 0.3], [0.6, -1.1], [0.7, 1.2]
+            ]
+            test_points = torch.tensor(test_points_data, dtype=torch.float64) # Use float64 for consistency
 
             print('\nEvaluating test points:')
             results = loaded_interpolator(test_points) # Utilise __call__
 
             print("-" * 40)
-            for i, p in enumerate(test_points):
-                print(f'  u(t={p[0]:.3f}, x={p[1]:.3f}) = {results[i]:.6f}')
+            # Convert points and results to CPU numpy for printing if they aren't already
+            test_points_np = test_points.cpu().numpy()
+            results_np = results.cpu().numpy()
+            for i, p_np in enumerate(test_points_np):
+                print(f'  u(t={p_np[0]:.3f}, x={p_np[1]:.3f}) = {results_np[i]:.6f}')
             print("-" * 40)
 
-            # Optionnel : Visualisation rapide d'un profil temporel
             if loaded_interpolator:
                  plt.figure(figsize=(10, 6))
                  final_time_index = loaded_interpolator.num_time_steps -1
-                 plt.plot(loaded_interpolator.spatial_coords,
-                          loaded_interpolator.solution_values[0,:],
-                          'b-', label=f't = {loaded_interpolator.times[0]:.2f} (Initial)')
-                 plt.plot(loaded_interpolator.spatial_coords,
-                          loaded_interpolator.solution_values[final_time_index // 2,:],
-                          'g--', label=f't = {loaded_interpolator.times[final_time_index // 2]:.2f} (Mid)')
-                 plt.plot(loaded_interpolator.spatial_coords,
-                          loaded_interpolator.solution_values[final_time_index,:],
-                          'r:', label=f't = {loaded_interpolator.times[final_time_index]:.2f} (Final)')
+                 # Convert to numpy for plotting
+                 spatial_coords_np = loaded_interpolator.spatial_coords.cpu().numpy()
+                 solution_values_np = loaded_interpolator.solution_values.cpu().numpy()
+                 times_np = loaded_interpolator.times.cpu().numpy()
+
+                 plt.plot(spatial_coords_np,
+                          solution_values_np[0,:],
+                          'b-', label=f't = {times_np[0]:.2f} (Initial)')
+                 plt.plot(spatial_coords_np,
+                          solution_values_np[final_time_index // 2,:],
+                          'g--', label=f't = {times_np[final_time_index // 2]:.2f} (Mid)')
+                 plt.plot(spatial_coords_np,
+                          solution_values_np[final_time_index,:],
+                          'r:', label=f't = {times_np[final_time_index]:.2f} (Final)')
                  plt.xlabel('x')
                  plt.ylabel('u(t, x)')
                  plt.title(f'Burger Solution Profiles (P2, CN, nx={loaded_interpolator.num_spatial_points-1}, dt={(loaded_interpolator.t_max)/loaded_interpolator.num_time_steps:.2e})')
                  plt.legend()
                  plt.grid(True)
-                 plt.ylim(-1.1, 1.1) # Ajustez si nécessaire
+                 plt.ylim(-1.1, 1.1)
                  plt.show()
-
 
         except Exception as e:
             print('\nError during loading or testing the pickled object:')

@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor
 from core.models.pinn import PINN
 
@@ -36,15 +37,9 @@ burger_solution = burger_interpolator.evaluate
 
 
 
-def simple_solution(a: Tensor | NDArray[np.float64]) -> Tensor | NDArray[np.float64]:
+def simple_solution(a: Tensor) -> Tensor:
     _, x = a[0], a[1:]
-    match x:
-        case _ if isinstance(x, Tensor):
-            return np.cos(a[0]-a[1])#np.exp(-(np.pi/2)**2 * t) * torch.sin((np.pi/2)*(torch.tensor([x[0]])+1)) # type: ignore
-        case _ if isinstance(x, np.ndarray):
-            return np.cos(a[0]-a[1])
-        case _:
-            raise ValueError("x must be either a Tensor or a numpy array")
+    return torch.cos(a[0]-a[1]).view(1)#np.exp(-(np.pi/2)**2 * t) * torch.sin((np.pi/2)*(torch.tensor([x[0]])+1)) # type: ignore
 
 
 
@@ -67,6 +62,6 @@ list_models = {
     "burger": {
         "pde": burger_pde,
         "solution": burger_interpolator.evaluate,
-        "bounds": [[0, 1], [0, 1]]
+        "bounds": [[0, 1], [-1, 1]]
     }
 }

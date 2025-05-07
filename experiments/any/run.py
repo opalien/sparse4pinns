@@ -64,26 +64,29 @@ if __name__ == "__main__":
         
         print("n, k, r = ", n, k, r)
 
+        time_bounds = p_model["bounds"][0]
+        spatial_bounds = p_model["bounds"][1:]
+
+        t_max_for_dataset = time_bounds[1]
+
         train_dataset = TrainAnyDataset(
             p_model["solution"],
-            1000,
-            10_000,
-            p_model["bounds"][:1],
-            p_model["bounds"][0][1]
+            n_elements=1000,
+            n_colloc=10000, 
+            shape=spatial_bounds,
+            t_max=t_max_for_dataset
         )
-
-
         test_dataset = TestAnyDataset(
             p_model["solution"],
-            1000,
-            p_model["bounds"][:1],
-            p_model["bounds"][0][1]
+            n_elements=1000,
+            shape=spatial_bounds,
+            t_max=t_max_for_dataset
         )
 
         print(f"{train_dataset.elements[:10]=} \n \n {train_dataset.colloc[:10]=} \n \n {test_dataset.elements[:10]=} \n \n")
 
-        train_dataloader  = train_dataset.get_dataloader(200)
-        test_dataloader = test_dataset.get_dataloader(200)
+        train_dataloader  = train_dataset.get_dataloader(1000)
+        test_dataloader = test_dataset.get_dataloader(1000)
 
 
         layers = [
