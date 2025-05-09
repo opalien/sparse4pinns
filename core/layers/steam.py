@@ -18,13 +18,15 @@ class STEAMParameter(ParameterLike):
 
         self.P0 = LearnablePermutation(tensor.P0)
         self.R = BlockDiagParameter(tensor.R)
-        self.Pbar = tensor.Pbar
+        Pbar = tensor.Pbar
         self.L = BlockDiagParameter(tensor.L)
         self.P2 = LearnablePermutation(tensor.P2)
 
 
         self.m = tensor.shape[1]
         self.n = self.m**2
+
+        self.register_buffer("Pbar", Pbar)
 
     
     def forward(self, x: Tensor) -> Tensor:

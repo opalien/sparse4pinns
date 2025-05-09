@@ -44,3 +44,6 @@ class BlockDiagParameter(ParameterLike):
     @property
     def dense(self) -> Tensor:
         return BlockDiagTensor(self.block_diag.data).dense
+    
+
+    

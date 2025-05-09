@@ -150,11 +150,18 @@ class PermutationTensor(TensorLike):
             return PermutationTensor(perm_indices)
         except ValueError as e:
             raise ValueError(f"Could not construct a valid PermutationTensor from the dense matrix: {e}")
+        
+        
+    def to(self, *args, **kwargs) -> "PermutationTensor":
+        data_on_device = torch.Tensor.to(self, *args, **kwargs)
+        return PermutationTensor(data_on_device)
 
 
 
 class BitRevPermutationTensor(PermutationTensor):
 
+    n: int
+    sqrt_n: int
 
     def __new__(cls, n: int):
         if (sqrt_n:=int(math.isqrt(n)))**2 != n:
@@ -184,7 +191,7 @@ class BitRevPermutationTensor(PermutationTensor):
             case PermutationTensor():
                 if other.shape[0] != this.n:
                     raise ValueError(f"Dimension mismatch: PermutationTensor shapes must match ({this.n} != {other.shape[0]})")
-                return PermutationTensor(rearrange(other, "(n m) B -> (m n) B", n=this.sqrt_n, m=this.sqrt_n))
+                return PermutationTensor(rearrange(other, "(n m) ... -> (m n) ...", n=this.sqrt_n, m=this.sqrt_n))
 
             case Tensorable():
                 return BitRevPermutationTensor._matmul(this, other.dense)
@@ -194,7 +201,7 @@ class BitRevPermutationTensor(PermutationTensor):
                 if other.ndim > 0 and other.shape[0] != this.n:
                     raise ValueError(f"Dimension mismatch: PermutationTensor shapes must match ({this.n} != {other.shape[0]})")
                 
-                return rearrange(other, "(n m) B -> (m n) B", n=this.sqrt_n, m=this.sqrt_n)
+                return rearrange(other, "(n m) ... -> (m n) ...", n=this.sqrt_n, m=this.sqrt_n)
             
             case _:
                 return NotImplemented
@@ -206,7 +213,7 @@ class BitRevPermutationTensor(PermutationTensor):
             case PermutationTensor():
                 if other.shape[-1] != this.n:
                     raise ValueError(f"Dimension mismatch: PermutationTensor shapes must match ({this.n} != {other.shape[0]})")
-                return PermutationTensor(rearrange(other, "B (n m) -> B (m n)", n=this.sqrt_n, m=this.sqrt_n))
+                return PermutationTensor(rearrange(other, "... (n m) -> ... (m n)", n=this.sqrt_n, m=this.sqrt_n))
 
             case Tensorable():
                 return BitRevPermutationTensor._rmatmul(other.dense, this)
@@ -216,10 +223,18 @@ class BitRevPermutationTensor(PermutationTensor):
                 if other.ndim > 0 and other.shape[-1] != this.n:
                     raise ValueError(f"Dimension mismatch: PermutationTensor shapes must match ({this.n} != {other.shape[0]})")
                 
-                return rearrange(other, "B (n m) -> B (m n)", n=this.sqrt_n, m=this.sqrt_n)
+                return rearrange(other, "... (n m) -> ... (m n)", n=this.sqrt_n, m=this.sqrt_n)
             
             case _:
                 return NotImplemented
+            
+
+    def to(self, *args, **kwargs) -> "BitRevPermutationTensor":
+        data_on_device = torch.Tensor.to(self, *args, **kwargs)
+        instance = data_on_device.as_subclass(BitRevPermutationTensor)
+        instance.n = self.n           
+        instance.sqrt_n = self.sqrt_n 
+        return instance
             
     
 

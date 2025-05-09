@@ -23,9 +23,12 @@ class MonarchParameter(ParameterLike):
         self.m = monarch.m
         self.n = monarch.n
         self.R = BlockDiagParameter(monarch.R)
-        self.P1 = BitRevPermutationTensor(self.n)
+        P1 = BitRevPermutationTensor(self.n)
         self.L = BlockDiagParameter(monarch.L)
-        self.P2  = BitRevPermutationTensor(self.n)
+        P2  = BitRevPermutationTensor(self.n)
+
+        self.register_buffer("P1", P1)
+        self.register_buffer("P2", P2)
 
     
     def __matmul__(self, x: Tensor | Tensorable) -> Tensor:

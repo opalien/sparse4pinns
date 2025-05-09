@@ -104,6 +104,16 @@ class MonarchTensor(TensorLike):
             
             case _:
                 return NotImplemented
+            
+    
+    def to(self, *args, **kwargs) -> "MonarchTensor":
+        data_on_device = torch.Tensor.to(self, *args, **kwargs)
+        instance = data_on_device.as_subclass(MonarchTensor)
+        instance.P1 = self.P1.to(*args, **kwargs)
+        instance.P2 = self.P2.to(*args, **kwargs)
+        instance.m = self.m
+        instance.n = self.n
+        return instance
 
 
 

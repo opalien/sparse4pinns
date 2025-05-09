@@ -135,6 +135,15 @@ class STEAMTensor(TensorLike):
     def dense(self)-> Tensor:
         return self.P2 @ (self.L @ (self.Pbar @ (self.R @ self.P0)))
     
+    def to(self, *args, **kwargs) -> "STEAMTensor":
+        data_on_device = torch.Tensor.to(self, *args, **kwargs)
+        instance = data_on_device.as_subclass(STEAMTensor)
+        instance.permutations = self.permutations.to(*args, **kwargs)
+        instance.Pbar = self.Pbar.to(*args, **kwargs)
+        instance.m = self.m
+        instance.n = self.n
+        return instance
+    
 
     @staticmethod
     def from_dense(A: Tensor, T: int = 100, alpha: float = 0.001)-> "STEAMTensor":

@@ -1,3 +1,4 @@
+import torch
 from torch import Tensor
 import abc
 
@@ -15,7 +16,11 @@ class Tensorable(abc.ABC):
     def dense(self) -> Tensor:
         raise NotImplementedError
     
+    
+    
 
 
 class TensorLike(Tensorable, Tensor, abc.ABC, metaclass=TensorABCMeta):
-    pass
+    @abc.abstractmethod
+    def to(self, device: torch.device | str) -> Tensor:
+        raise NotImplementedError

@@ -61,9 +61,6 @@ class BlockDiagTensor(TensorLike):
                 
                 return NotImplemented
             
-            case _:
-                return NotImplemented
-            
 
     @staticmethod
     def _rmatmul(other: Tensor | TensorLike, tensor: BlockDiagTensor | nn.Parameter) -> Tensor | NotImplementedError:
@@ -92,10 +89,6 @@ class BlockDiagTensor(TensorLike):
                 
                 return NotImplemented            
 
-            case _:
-                return NotImplemented
-            
-
     @property      
     def T(self) -> "BlockDiagTensor": # type: ignore
         return einsum(self, "nblocks b2 b1 -> nblocks b1 b2")
@@ -108,4 +101,8 @@ class BlockDiagTensor(TensorLike):
     @staticmethod
     def zeros(nblocks: int, b1: int, b2: int) -> "BlockDiagTensor":
         return BlockDiagTensor(torch.zeros(nblocks, b2, b1))
+
+    def to(self, *args, **kwargs) -> "BlockDiagTensor":
+        data_on_device = torch.Tensor.to(self, *args, **kwargs)
+        return BlockDiagTensor(data_on_device)
     
