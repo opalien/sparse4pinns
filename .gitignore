@@ -8,3 +8,9 @@ __pycache__/
 *.json
 *.jsonl
 *.idea
+*.xml
+*.yaml
+*.yml
+*.log
+*.csv
+
