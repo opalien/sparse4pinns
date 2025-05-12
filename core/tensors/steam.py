@@ -9,6 +9,7 @@ from ..utils.butterfly import blockdiag_butterfly_project
 
 from torch import Tensor, nn
 import torch
+from typing import Any # Added for type hinting
 
 import math
 
@@ -90,7 +91,7 @@ class STEAMTensor(TensorLike):
 
 
     @staticmethod
-    def _matmul(steam: "STEAMTensor" | nn.Module , other: Tensor | TensorLike) -> Tensor:
+    def _matmul(steam: 'STEAMTensor | nn.Module' , other: Tensor | TensorLike) -> Tensor:
         match other:
             case TensorLike():
                 return STEAMTensor._matmul(steam, other.dense)
@@ -105,7 +106,7 @@ class STEAMTensor(TensorLike):
             
 
     @staticmethod
-    def _rmatmul(other: Tensor | TensorLike, steam: "STEAMTensor" | nn.Module) -> Tensor:
+    def _rmatmul(other: Tensor | TensorLike, steam: 'STEAMTensor | nn.Module') -> Tensor:
         match other:
             case TensorLike():
                 return STEAMTensor._rmatmul(other.dense, steam)
@@ -135,7 +136,7 @@ class STEAMTensor(TensorLike):
     def dense(self)-> Tensor:
         return self.P2 @ (self.L @ (self.Pbar @ (self.R @ self.P0)))
     
-    def to(self, *args, **kwargs) -> "STEAMTensor":
+    def to(self, *args: Any, **kwargs: Any) -> "STEAMTensor":
         data_on_device = torch.Tensor.to(self, *args, **kwargs)
         instance = data_on_device.as_subclass(STEAMTensor)
         instance.permutations = self.permutations.to(*args, **kwargs)
@@ -154,47 +155,70 @@ class STEAMTensor(TensorLike):
         if ( m:=math.isqrt(n) )**2 != n :
             raise ValueError(f"Input tensor must be perfect square, but got shape {A.shape}")
 
-        Pbar = bit_rev(n).dense
-        P0 = bit_rev(n).dense
-        P2 = bit_rev(n).dense
-        X0 = bit_rev(n).dense
-        X2 = bit_rev(n).dense
+        device = A.device # Get device from input tensor A
+        Pbar = bit_rev(n).dense.to(device)
+        P0 = bit_rev(n).dense.to(device)
+        P2 = bit_rev(n).dense.to(device)
+        X0 = bit_rev(n).dense.to(device)
+        X2 = bit_rev(n).dense.to(device)
 
         R, L = blockdiag_butterfly_project(A @ P0.T)
+        R = R.to(device) # Ensure R is on the correct device
+        L = L.to(device) # Ensure L is on the correct device
 
-        L_best, R_best, P0_best, P2_best = None, None, None, None
-        norm_best = float("inf")
+
+        L_best, R_best, P0_best, P2_best = L.clone(), R.clone(), P0.clone(), P2.clone() # Initialize with initial tensors
+        norm_best = torch.norm( (P2 @ BlockDiagTensor(L).dense @  Pbar @ BlockDiagTensor(R).dense @ P0) - A).item()/torch.norm(A)
+        # norm_best = float("inf") # Previous initialization
+
 
         for t in range(T):
             #print("t = ", t)
-            nu = 1/(alpha 
-                                         * torch.norm(BlockDiagTensor(L).dense @  Pbar @ BlockDiagTensor(R).dense)**2
-                                        )
+            # Ensure operands for torch.norm are on the same device
+            L_dense_Pbar_R_dense = BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense
+            norm_val_squared = torch.norm(L_dense_Pbar_R_dense)**2
+            
+            if norm_val_squared.item() == 0: # Avoid division by zero
+                nu = torch.tensor(float('inf'), device=device) # Or handle differently
+            else:
+                nu = 1 / (alpha * norm_val_squared)
 
-            X0 -= nu*(
-                        ( P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense).T 
-                        @ ((P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0) - A) 
-                    )
+            # git veut pas marcher du coup je crée un version avec uniquement ce texte
 
-            X2 -= nu*( 
-                        ( (P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0) - A) 
-                        @ (BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0).T 
-                    )
+            # Ensure all parts of the gradient calculation are on the correct device
+            term1_X0 = (P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense).T
+            term2_X0 = ((P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0) - A)
+            X0_update = term1_X0 @ term2_X0
+            X0 = X0 - nu * X0_update
+
+
+            term1_X2 = ( (P2 @ BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0) - A)
+            term2_X2 = (BlockDiagTensor(L).dense @ Pbar @ BlockDiagTensor(R).dense @ P0).T
+            X2_update = term1_X2 @ term2_X2
+            X2 = X2 - nu * X2_update
+
 
             P0 = PermutationSTE.apply(X0)
             P2 = PermutationSTE.apply(X2)
 
-            R, L = blockdiag_butterfly_project( Pbar @ P2.T @ A @ P0.T )
+            # Ensure results of blockdiag_butterfly_project are on the correct device
+            projection_input = Pbar @ P2.T @ A @ P0.T
+            R_new, L_new = blockdiag_butterfly_project(projection_input)
+            R, L = R_new.to(device), L_new.to(device)
 
             
-            if (current_norm:=(torch.norm( (P2 @ BlockDiagTensor(L).dense @  Pbar @ BlockDiagTensor(R).dense @ P0) - A).item()/torch.norm(A))) < norm_best:
+            current_norm_tensor = (P2 @ BlockDiagTensor(L).dense @  Pbar @ BlockDiagTensor(R).dense @ P0) - A
+            current_norm = (torch.norm(current_norm_tensor).item() / torch.norm(A)).item() if torch.norm(A).item() != 0 else float('inf')
+
+            if current_norm < norm_best:
                 norm_best = current_norm
-                L_best = L
-                R_best = R
-                P0_best = P0
-                P2_best = P2
+                L_best = L.clone()
+                R_best = R.clone()
+                P0_best = P0.clone()
+                P2_best = P2.clone()
 
-                print("current norm =", current_norm, "best norm =", norm_best)
+                # print("current norm =", current_norm, "best norm =", norm_best)
 
-
+        # Ensure final tensors for STEAMTensor are on the correct device.
+        # stack will use the device of the input tensors, which should now be correct.
         return STEAMTensor(torch.stack([R_best, L_best]), torch.stack([P0_best, P2_best]))
