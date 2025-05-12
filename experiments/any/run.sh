@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --array=1-500%1
+#SBATCH --array=1-500%5
 #SBATCH --job-name=sparse4pinn
 #SBATCH --partition=besteffort
 #SBATCH --nodes=1                # nombre de noeuds
