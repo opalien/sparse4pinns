@@ -13,5 +13,5 @@ if os.path.exists("params"):
 for (m, k, model, equation) in [(m, k, model, equation) for m in M for k in K for model in models for equation in equations]:
     with open(f"experiments/any/params", "a") as f:
         for r in range(rep):
-            f.write(f"{equation} -m {m} -k {k} -e {epoch} -r {r} -f {model}\n")
+            f.write(f"{equation} -m {m} -k {k} -e {epoch} -r 1 -f {model}\n")
 
