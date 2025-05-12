@@ -5,7 +5,7 @@
 #SBATCH --nodes=1                # nombre de noeuds
 #SBATCH --ntasks=1               # nombre total de tâches sur tous les nœuds
 #SBATCH --cpus-per-task=1
-#SBATCH --time=15:00:00
+#SBATCH --time=10:00:00
 #SBATCH --mem=2G
 #SBATCH --output=hs_slurm/dcv_hist/out/slurm-%A_%a.txt
 #SBATCH --error=hs_slurm/dcv_hist/err/slurm-%A_%a.txt
