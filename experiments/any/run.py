@@ -123,6 +123,7 @@ if __name__ == "__main__":
             "model": "linear",
             "inference_time": inference_time,
             "equation" : args.problem,
+            "alea" : alea,
         }
         save_result(save_path, dict_linear)
 
@@ -154,6 +155,7 @@ if __name__ == "__main__":
                 "inference_time": inference_time,
                 "transformation_time": transformation_time,
                 "accuracy": acc,
+                "alea" : alea,  
             }
             save_result(save_path, dict_monarch_linear_trained)
         
@@ -184,6 +186,7 @@ if __name__ == "__main__":
                 "inference_time": inference_time,
                 "transformation_time": transformation_time,
                 "accuracy": acc,
+                "alea" : alea,
             }
             save_result(save_path, dict_monarch_linear_trained)
 
@@ -216,6 +219,7 @@ if __name__ == "__main__":
                 "model": "monarch",
                 "inference_time": inference_time,
                 "equation" : args.problem,
+                "alea" : alea,
             }
 
             print("Accuracy monarch_model :", accuracy(monarch_model, test_dataloader, device))
@@ -248,6 +252,7 @@ if __name__ == "__main__":
                 "model": "stem",
                 "inference_time": inference_time,
                 "equation" : args.problem,
+                "alea" : alea,
             }
 
             print("Accuracy steam_model :", accuracy(steam_model, test_dataloader, device))

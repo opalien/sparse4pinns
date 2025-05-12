@@ -12,7 +12,7 @@ import pickle
 #from ..any.solvers.burger import BurgerSolutionInterpolator
 
 
-from examples.any.solvers.burger import BurgerSolutionInterpolator, load_solution_interpolator
+from examples.any.solvers.burger_loader import BurgerSolutionInterpolator, load_solution_interpolator
 
 
 dir = os.path.join("examples", "any", "solvers")
