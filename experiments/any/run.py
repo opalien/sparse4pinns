@@ -57,7 +57,7 @@ if args.problem not in list_models:
 
 p_model = list_models[args.problem]
 
-lr = 0.0001
+lr = 0.001
 
 if __name__ == "__main__":
     for (n, k, r) in [(n, k, r)   
