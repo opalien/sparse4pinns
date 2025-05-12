@@ -8,3 +8,5 @@ __pycache__/
 *.json
 *.jsonl
 *.idea
+project.txt
+converter.py

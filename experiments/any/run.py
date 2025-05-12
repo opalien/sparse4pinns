@@ -8,7 +8,7 @@ from core.layers.steam import STEAMLinear
 from core.utils.save import save_result
 
 from examples.any.list_models import list_models
-from core.utils.convert import linear_to_monarch
+from core.utils.convert import linear_to_monarch, linear_to_steam
 
 from examples.any.dataset import TrainAnyDataset, TestAnyDataset
 import argparse
@@ -32,6 +32,7 @@ parser.add_argument("-e", "--epoch", type=int, default=100, help="Un nombre (dé
 parser.add_argument("-r", "--repetition", type=int, default=1, help="Un nombre (défaut: 1)")
 parser.add_argument("-m", "--m_matrix", type=int, default=1, help="coté de la matrice (défaut: 1)")
 parser.add_argument("-k", "--k_layers", type=int, default=1, help="Un nombre (défaut: 1)")
+parser.add_argument("-f", "--factorization", type=str, default="linear", help="monarch, steam (défaut: monarch)")
 
 args = parser.parse_args()
 
@@ -55,6 +56,8 @@ if args.problem not in list_models:
     raise ValueError(f"Problem {args.problem} not found in list_models.")
 
 p_model = list_models[args.problem]
+
+lr = 0.0001
 
 if __name__ == "__main__":
     for (n, k, r) in [(n, k, r)   
@@ -83,10 +86,15 @@ if __name__ == "__main__":
             t_max=t_max_for_dataset
         )
 
-        print(f"{train_dataset.elements[:10]=} \n \n {train_dataset.colloc[:10]=} \n \n {test_dataset.elements[:10]=} \n \n")
+        #print(f"{train_dataset.elements[:10]=} \n \n {train_dataset.colloc[:10]=} \n \n {test_dataset.elements[:10]=} \n \n")
 
         train_dataloader  = train_dataset.get_dataloader(1000)
         test_dataloader = test_dataset.get_dataloader(1000)
+
+
+
+
+        #####################################################
 
 
         layers = [
@@ -97,7 +105,7 @@ if __name__ == "__main__":
 
         linear_model = AnyPINN(layers, p_model["pde"])
 
-        optimizer = torch.optim.Adam(linear_model.parameters(), lr=0.001)
+        optimizer = torch.optim.Adam(linear_model.parameters(), lr=lr)
         train_losses_linear, _, _, test_losses_linear, times_linear = train(linear_model, train_dataloader, optimizer, device, epoch, test_dataloader)
         print("linear_model trained")
 
@@ -114,69 +122,138 @@ if __name__ == "__main__":
             "layers": str(layers),
             "model": "linear",
             "inference_time": inference_time,
+            "equation" : args.problem,
         }
+        save_result(save_path, dict_linear)
 
 
+        if args.factorization == "monarch":
+            t0 = time.time()
+            monarch_linear_trained = linear_to_monarch(linear_model)
+            transformation_time = time.time() - t0
+            print("architecture : ", monarch_linear_trained)
 
-        layers = [
-            nn.Linear(2, n),
-            *[MonarchLinear(n, n) for _ in range(k)],
-            nn.Linear(n, 1),
-        ]
+            print("Accuracy monarch_linear_trained :", acc:=accuracy(monarch_linear_trained, test_dataloader, device))
 
-        monarch_model = AnyPINN(layers, p_model["pde"])
-        optimizer = torch.optim.Adam(monarch_model.parameters(), lr=0.001)
-        train_losses_monarch, _, _, test_losses_monarch, times_monarch = train(monarch_model, train_dataloader, optimizer, device, epoch, test_dataloader)
-        print("monarch_model trained")
+            t0 = time.time()
+            monarch_linear_trained(x)
+            inference_time = time.time() - t0
 
-        t0 = time.time()
-        monarch_model(x)
-        inference_time = time.time() - t0
+            optimizer = torch.optim.Adam(monarch_linear_trained.parameters(), lr=lr)
+            train_losses_linear, _, _, test_losses_linear, times_linear = train(monarch_linear_trained, train_dataloader, optimizer, device, epoch, test_dataloader)
+            print("linear_model trained")
 
-        dict_monarch = {
-            "train_losses": train_losses_monarch,
-            "test_losses": test_losses_monarch,
-            "times": times_monarch,
-            "n": n,
-            "k": k,
-            "layers": str(layers),
-            "model": "monarch",
-            "inference_time": inference_time,
-        }
+            dict_monarch_linear_trained = {
+                "train_losses": train_losses_linear,
+                "test_losses": test_losses_linear,
+                "times": times_linear,
+                "n": n,
+                "k": k,
+                "layers": str(layers),
+                "model": "monarch_linear_trained",
+                "inference_time": inference_time,
+                "transformation_time": transformation_time,
+                "accuracy": acc,
+            }
+            save_result(save_path, dict_monarch_linear_trained)
+        
+        else:
+            t0 = time.time()
+            monarch_linear_trained = linear_to_steam(linear_model)
+            transformation_time = time.time() - t0
+            print("architecture : ", monarch_linear_trained)
 
-        print("Accuracy monarch_model :", accuracy(monarch_model, test_dataloader, device))
+            print("Accuracy monarch_linear_trained :", acc:=accuracy(monarch_linear_trained, test_dataloader, device))
 
+            t0 = time.time()
+            monarch_linear_trained(x)
+            inference_time = time.time() - t0
+
+            optimizer = torch.optim.Adam(monarch_linear_trained.parameters(), lr=lr)
+            train_losses_linear, _, _, test_losses_linear, times_linear = train(monarch_linear_trained, train_dataloader, optimizer, device, epoch, test_dataloader)
+            print("linear_model trained")
+
+            dict_monarch_linear_trained = {
+                "train_losses": train_losses_linear,
+                "test_losses": test_losses_linear,
+                "times": times_linear,
+                "n": n,
+                "k": k,
+                "layers": str(layers),
+                "model": "steam_linear_trained",
+                "inference_time": inference_time,
+                "transformation_time": transformation_time,
+                "accuracy": acc,
+            }
+            save_result(save_path, dict_monarch_linear_trained)
+
+
+        ###############################################################################
+
+        if args.factorization == "monarch":
+            layers = [
+                nn.Linear(2, n),
+                *[MonarchLinear(n, n) for _ in range(k)],
+                nn.Linear(n, 1),
+            ]
+
+            monarch_model = AnyPINN(layers, p_model["pde"])
+            optimizer = torch.optim.Adam(monarch_model.parameters(), lr=lr)
+            train_losses_monarch, _, _, test_losses_monarch, times_monarch = train(monarch_model, train_dataloader, optimizer, device, epoch, test_dataloader)
+            print("monarch_model trained")
+
+            t0 = time.time()
+            monarch_model(x)
+            inference_time = time.time() - t0
+
+            dict_monarch = {
+                "train_losses": train_losses_monarch,
+                "test_losses": test_losses_monarch,
+                "times": times_monarch,
+                "n": n,
+                "k": k,
+                "layers": str(layers),
+                "model": "monarch",
+                "inference_time": inference_time,
+                "equation" : args.problem,
+            }
+
+            print("Accuracy monarch_model :", accuracy(monarch_model, test_dataloader, device))
+            save_result(save_path, dict_monarch)
         #####################################################
 
-        layers = [
-        nn.Linear(2, n),
-        *[STEAMLinear(n, n) for _ in range(k)],
-        nn.Linear(n, 1),
-        ]
+        else:
+            layers = [
+            nn.Linear(2, n),
+            *[STEAMLinear(n, n) for _ in range(k)],
+            nn.Linear(n, 1),
+            ]
 
-        steam_model = AnyPINN(layers, p_model["pde"])
-        optimizer = torch.optim.Adam(steam_model.parameters(), lr=0.001)
-        train_losses_steam, _, _, test_losses_steam, times_steam = train(steam_model, train_dataloader, optimizer, device, epoch, test_dataloader)
-        print("steam_model trained")
+            steam_model = AnyPINN(layers, p_model["pde"])
+            optimizer = torch.optim.Adam(steam_model.parameters(), lr=lr)
+            train_losses_steam, _, _, test_losses_steam, times_steam = train(steam_model, train_dataloader, optimizer, device, epoch, test_dataloader)
+            print("steam_model trained")
 
-        t0 = time.time()
-        steam_model(x)
-        inference_time = time.time() - t0
+            t0 = time.time()
+            steam_model(x)
+            inference_time = time.time() - t0
 
-        dict_stem = {
-            "train_losses": train_losses_steam,
-            "test_losses": test_losses_steam,
-            "times": times_steam,
-            "n": n,
-            "k": k,
-            "layers": str(layers),
-            "model": "stem",
-            "inference_time": inference_time,
-        }
+            dict_stem = {
+                "train_losses": train_losses_steam,
+                "test_losses": test_losses_steam,
+                "times": times_steam,
+                "n": n,
+                "k": k,
+                "layers": str(layers),
+                "model": "stem",
+                "inference_time": inference_time,
+                "equation" : args.problem,
+            }
+
+            print("Accuracy steam_model :", accuracy(steam_model, test_dataloader, device))
+            save_result(save_path, dict_stem)
 
         
-        save_result(save_path, dict_linear)
-        save_result(save_path, dict_monarch)
-        save_result(save_path, dict_stem)
-        print("Results saved")
+        
+        print("Finished !!")
         
