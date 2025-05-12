@@ -4,7 +4,7 @@ M = range(1, 51)
 K = range(1, 5)
 models = ["monarch", "steam"]
 equations = ["simple", "burger"]
-epoch = 250
+epoch = 1000
 rep = 10
 
 if os.path.exists("params"):
