@@ -44,6 +44,8 @@ PARAMS=$(tail -n +${PARAMS_ID} ${PARAMS_FILE} | head -n 1)
 CMD=$"srun python experiments/any/run.py ${PARAMS}"
 
 echo "start"
+ml python/3.12
+ml cuda/12.4
 echo "$PARAMS"
 source ../env/bin/activate # change to your virtual environment
 export PYTHONPATH=$PWD 
