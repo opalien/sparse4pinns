@@ -156,7 +156,13 @@ class PermutationTensor(TensorLike):
         data_on_device = torch.Tensor.to(self, *args, **kwargs)
         return PermutationTensor(data_on_device)
 
-
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        cloned_tensor_data = torch.Tensor.clone(self).detach()
+        new_instance = cloned_tensor_data.as_subclass(type(self))
+        memo[id(self)] = new_instance
+        return new_instance
 
 class BitRevPermutationTensor(PermutationTensor):
 
@@ -235,6 +241,14 @@ class BitRevPermutationTensor(PermutationTensor):
         instance.n = self.n           
         instance.sqrt_n = self.sqrt_n 
         return instance
+    
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+        new_instance = super().__deepcopy__(memo)
+        new_instance.n = self.n
+        new_instance.sqrt_n = self.sqrt_n
+        return new_instance
             
     
 

@@ -10,6 +10,7 @@ from ..utils.butterfly import blockdiag_butterfly_project
 from torch import Tensor, nn
 import torch
 from typing import Any # Added for type hinting
+import copy
 
 import math
 
@@ -222,3 +223,20 @@ class STEAMTensor(TensorLike):
         # Ensure final tensors for STEAMTensor are on the correct device.
         # stack will use the device of the input tensors, which should now be correct.
         return STEAMTensor(torch.stack([R_best, L_best]), torch.stack([P0_best, P2_best]))
+
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        cloned_tensor_data = torch.Tensor.clone(self).detach()
+        cloned_permutations = copy.deepcopy(self.permutations, memo)
+        
+        new_instance = type(self)(cloned_tensor_data, cloned_permutations)
+        
+        memo[id(self)] = new_instance
+        
+        new_instance.Pbar = copy.deepcopy(self.Pbar, memo)
+        new_instance.m = self.m
+        new_instance.n = self.n
+        
+        return new_instance

@@ -106,3 +106,13 @@ class BlockDiagTensor(TensorLike):
         data_on_device = torch.Tensor.to(self, *args, **kwargs)
         return BlockDiagTensor(data_on_device)
     
+
+    def __deepcopy__(self, memo: dict[int, "BlockDiagTensor"]) -> "BlockDiagTensor":
+        if id(self) in memo:
+            return memo[id(self)]
+        
+        cloned_tensor_data = torch.Tensor.clone(self).detach()
+        new_instance = type(self)(cloned_tensor_data)
+        memo[id(self)] = new_instance
+
+        return new_instance

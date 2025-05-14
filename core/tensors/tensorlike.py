@@ -24,3 +24,7 @@ class TensorLike(Tensorable, Tensor, abc.ABC, metaclass=TensorABCMeta):
     @abc.abstractmethod
     def to(self, device: torch.device | str) -> Tensor:
         raise NotImplementedError
+
+
+    def __deepcopy__(self, memo: dict[int, "TensorLike"]) -> "TensorLike":
+        raise NotImplementedError

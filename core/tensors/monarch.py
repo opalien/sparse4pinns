@@ -5,6 +5,7 @@ from ..tensors.permutation import bit_rev, BitRevPermutationTensor
 
 from torch import Tensor, nn
 import torch
+import copy
 
 from ..utils.butterfly import blockdiag_butterfly_project
 
@@ -129,3 +130,21 @@ class MonarchTensor(TensorLike):
         return MonarchTensor(
             torch.stack([R, L])
         )
+    
+    def __deepcopy__(self, memo):
+        if id(self) in memo:
+            return memo[id(self)]
+
+        cloned_tensor_data = torch.Tensor.clone(self).detach()
+        
+        new_instance = type(self)(cloned_tensor_data)
+
+        memo[id(self)] = new_instance
+
+        new_instance.P1 = copy.deepcopy(self.P1, memo)
+        new_instance.P2 = copy.deepcopy(self.P2, memo)
+        
+        new_instance.m = self.m
+        new_instance.n = self.n
+        
+        return new_instance
