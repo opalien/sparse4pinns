@@ -11,3 +11,11 @@ __pycache__/
 project.txt
 converter.py
 experiments/any/params
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tiff
+*.ico
+*.webp
