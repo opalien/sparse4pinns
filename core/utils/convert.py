@@ -45,8 +45,8 @@ def monarch_to_linear(model: PINN):
         if isinstance(layer, MonarchLinear):
             linear_layer = nn.Linear(layer.in_features, layer.out_features, bias=True)
 
-            linear_layer.weight.data = layer.tensor().dense.clone()
-            linear_layer.bias.data = layer.bias.clone()
+            linear_layer.weight.data = layer.tensor().dense.clone().contiguous()
+            linear_layer.bias.data = layer.bias.clone().contiguous()
             layers.append(linear_layer)
         else:
             layers.append(layer)
@@ -59,12 +59,10 @@ def steam_to_linear(model: PINN):
     layers: list[nn.Module] = []
     for layer in model.layers:
         if isinstance(layer, STEAMLinear):
-            # Create a new nn.Linear layer
             linear_layer = nn.Linear(layer.in_features, layer.out_features, bias=True)
             
-            # Copy the weights from the STEAMLinear layer's dense representation
-            linear_layer.weight.data = layer.dense.clone()
-            linear_layer.bias.data = layer.bias.clone()
+            linear_layer.weight.data = layer.dense.clone().contiguous()
+            linear_layer.bias.data = layer.bias.clone().contiguous()
 
             layers.append(linear_layer)
         else:
@@ -72,3 +70,31 @@ def steam_to_linear(model: PINN):
     
     model.layers = nn.ModuleList(layers)
     return model
+
+def convert(pinn: PINN, input_factor: str, output_factor: str):
+    
+    
+    model_to_convert = copy.deepcopy(pinn)
+
+    if input_factor == output_factor:
+        return model_to_convert
+    
+    if input_factor == "monarch" and output_factor == "linear":
+        return monarch_to_linear(model_to_convert)
+    
+    if input_factor == "linear" and output_factor == "monarch":
+        return linear_to_monarch(model_to_convert)
+    
+    if input_factor == "steam" and output_factor == "linear":
+        return steam_to_linear(model_to_convert)
+    
+    if input_factor == "linear" and output_factor == "steam":
+        return linear_to_steam(model_to_convert)
+    
+    if input_factor == "monarch" and output_factor == "steam":
+        return linear_to_steam(linear_to_monarch(model_to_convert))
+    
+    if input_factor == "steam" and output_factor == "monarch":
+        return monarch_to_linear(linear_to_steam(model_to_convert))
+    
+    raise ValueError(f"Invalid input factor: {input_factor} and output factor: {output_factor}")

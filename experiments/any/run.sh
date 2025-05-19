@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --array=1-376%100
+#SBATCH --array=1-36%3
 #SBATCH --job-name=sparse4pinn
-#SBATCH --partition=besteffort
+#SBATCH --partition=gpu
 #SBATCH --nodes=1                # nombre de noeuds
 #SBATCH --ntasks=1               # nombre total de tâches sur tous les nœuds
 #SBATCH --cpus-per-task=1

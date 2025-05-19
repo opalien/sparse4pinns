@@ -21,6 +21,8 @@ import time
 import string
 import random
 
+from ..any.execution_tree import ExecutionTree
+
 match os.cpu_count():
     case None:  torch.set_num_threads(1)
     case n:     torch.set_num_threads(n)
@@ -33,6 +35,8 @@ parser.add_argument("-r", "--repetition", type=int, default=1, help="Un nombre (
 parser.add_argument("-m", "--m_matrix", type=int, default=1, help="coté de la matrice (défaut: 1)")
 parser.add_argument("-k", "--k_layers", type=int, default=1, help="Un nombre (défaut: 1)")
 parser.add_argument("-f", "--factorization", type=str, default="linear", help="monarch, steam (défaut: monarch)")
+
+parser.add_argument("-l", "--log", type=bool, default=False, help="log file")
 
 args = parser.parse_args()
 
@@ -51,6 +55,8 @@ epoch = args.epoch
 N = [args.m_matrix**2]#m*m for m in range(5, 40)]
 K = [args.k_layers]
 R = range(args.repetition)
+
+log = args.log
 
 if args.problem not in list_models:
     raise ValueError(f"Problem {args.problem} not found in list_models.")
@@ -104,6 +110,10 @@ if __name__ == "__main__":
         ]
 
         linear_model = AnyPINN(layers, p_model["pde"])
+
+        tree = ExecutionTree(1000, 4, device, train_dataloader, test_dataloader, linear_model, log=log)
+        tree.run()
+        break
 
         optimizer = torch.optim.Adam(linear_model.parameters(), lr=lr)
         train_losses_linear, _, _, test_losses_linear, times_linear = train(linear_model, train_dataloader, optimizer, device, epoch, test_dataloader)

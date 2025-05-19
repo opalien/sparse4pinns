@@ -7,7 +7,7 @@ import numpy as np
 from examples.any.model import AnyPINN
 from core.datasets.pinn_dataset import PINNDataloader
 
-from core.utils.train import train
+from core.utils.train import train, train_lbfgs
 from core.utils.convert import convert
 from core.utils.save import save_result
 import copy
@@ -16,8 +16,8 @@ from typing import cast
 
 
 optimizers = {
-    "adam": torch.optim.Adam, 
-    "lbfgs": torch.optim.LBFGS
+    "lbfgs": torch.optim.LBFGS,
+    "adam": torch.optim.Adam
 }
 
 lr = 0.001
@@ -60,7 +60,7 @@ class ExecutionTree:
 
         self.epochs = [self.steps_pos[i] - self.steps_pos[i - 1] for i in range(1, len(self.steps_pos))]
         
-        self.possibles_edges = [(factor, opt) for opt in optimizers.keys() for factor in ["linear", "monarch"] ]
+        self.possibles_edges = [(factor, opt) for opt in optimizers.keys() for factor in ["monarch", "linear"] ]
 
         # PINN, epoch_total, id
         self.nodes: list[Node] = [Node(pinn, 0, 0, self.possibles_edges, 0, "linear")]
@@ -105,11 +105,16 @@ class ExecutionTree:
         if edge.parent.pinn is None:
             raise ValueError("Parent PINN is None")
         
-        model: AnyPINN = cast(AnyPINN, convert(copy.deepcopy(edge.parent.pinn), edge.factor, edge.parent.factor))
+        print(f"Training with {edge.parent.factor} -> {edge.factor}")
+        
+        model: AnyPINN = cast(AnyPINN, convert(copy.deepcopy(edge.parent.pinn), edge.parent.factor, edge.factor ))
 
         optimizer = optimizers[edge.optimizer](model.parameters(), lr=lr)
 
-        train_losses, _, _, test_losses, times = train(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
+        if edge.optimizer == "lbfgs":
+            train_losses, _, _, test_losses, times = train_lbfgs(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
+        else:
+            train_losses, _, _, test_losses, times = train(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
         model.to(self.buffer_device)
         edge.child.pinn = model
 
@@ -137,11 +142,15 @@ class ExecutionTree:
     def run(self):
         while (edge := self.get_next_edge()) is not None:
             dict_model = self.train_one_step(edge)
-            save_result(self.save_path, dict_model)
+            
 
             edge.child.id = len(self.nodes)
+            dict_model["child_id"] = edge.child.id
+
             self.nodes.append(edge.child)
             self.edges.append(edge)
+
+            save_result(self.save_path, dict_model)
 
 
 if __name__ == "__main__":

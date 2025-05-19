@@ -1,8 +1,8 @@
 import os
 
-M = range(5, 51)
-K = range(1, 5)
-models = ["monarch", "steam"]
+M = range(5, 40, 4)
+K = [1, 4] #range(1, 5)
+models = ["linear"] #monarch", "steam"]
 equations = ["burger"]
 epoch = 1000
 rep = 1
@@ -15,5 +15,6 @@ for r in range(rep):
         for m in M:
             for model in models:
                 for equation in equations:
-                    with open(f"experiments/any/params", "a") as f: 
-                        f.write(f"{equation} -m {m} -k {k} -e {epoch} -r 1 -f {model}\n")
+                    for log in [True, False]:
+                        with open(f"experiments/any/params", "a") as f: 
+                            f.write(f"{equation} -m {m} -k {k} -e {epoch} -r 1 -f {model} -l {log}\n")
