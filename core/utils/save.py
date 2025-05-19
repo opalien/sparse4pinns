@@ -1,11 +1,21 @@
-
 from typing import Any, cast
 import json
 import os
+import numpy as np
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, o: Any) -> Any:
+        if isinstance(o, np.integer):
+            return int(o)
+        elif isinstance(o, np.floating):
+            return float(o)
+        elif isinstance(o, np.ndarray):
+            return o.tolist()
+        return super().default(o)
 
 # save to format js line
 def save_result(path: str, results: dict[str, Any]):
-    results_str = json.dumps(results)
+    results_str = json.dumps(results, cls=NumpyEncoder)
     
     # create directory if it does not exist
     os.makedirs(os.path.dirname(path), exist_ok=True)
