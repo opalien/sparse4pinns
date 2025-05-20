@@ -61,41 +61,42 @@ for k in range(1, 10):
         ]
         monarch_model = torch.compile(AnyPINN(layers, p_model["pde"])).to(device)
 
-        layers = [
-            nn.Linear(2, n),
-            *[STEAMLinear(n, n) for _ in range(k)],
-            nn.Linear(n, 1),
-        ]
-        for layer in layers[1:k+1]:
-            layer.P0 = layer.Pbar
-            layer.P2 = layer.Pbar
-        steam_model = torch.compile(AnyPINN(layers, p_model["pde"])).to(device)
+        #layers = [
+        #    nn.Linear(2, n),
+        #    *[STEAMLinear(n, n) for _ in range(k)],
+        #    nn.Linear(n, 1),
+        #]
+        #for layer in layers[1:k+1]:
+        #    layer.P0 = layer.Pbar
+        #    layer.P2 = layer.Pbar
+        #    
+        #steam_model = torch.compile(AnyPINN(layers, p_model["pde"])).to(device)
 
         def timeit_linear():
             linear_model(x)
         def timeit_monarch():
             monarch_model(x)
-        def timeit_steam():
-            steam_model(x)
+        #def timeit_steam():
+        #    steam_model(x)
 
         t_l = timeit.timeit(timeit_linear, number=number, timer=time.process_time)
         t_m = timeit.timeit(timeit_monarch, number=number, timer=time.process_time)
-        t_s = timeit.timeit(timeit_steam, number=number, timer=time.process_time)
+        #t_s = timeit.timeit(timeit_steam, number=number, timer=time.process_time)
 
         t_linear.append(t_l)
         t_monarch.append(t_m)
-        t_steam.append(t_s)
+        #t_steam.append(t_s)
 
         print("t_linear", t_l)
         print("t_monarch", t_m)
-        print("t_steam", t_s)
+        #print("t_steam", t_s)
 
     dict_to_save = {
         "m": M,
         "k": k,
         "t_linear": t_linear,
-        "t_monarch": t_monarch,
-        "t_steam": t_steam
+        "t_monarch": t_monarch
+        #"t_steam": t_steam
     }
 
     save_result(save_path, dict_to_save )
@@ -105,7 +106,7 @@ for k in range(1, 10):
 from matplotlib import pyplot as plt
 plt.plot(M, t_linear, label="Linear")
 plt.plot(M, t_monarch, label="Monarch")
-plt.plot(M, t_steam, label="STEAM")
+#plt.plot(M, t_steam, label="STEAM")
 plt.xlabel("m (n = m*m)")
 plt.ylabel("Time (s)")
 plt.legend()
