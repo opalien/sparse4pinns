@@ -33,7 +33,7 @@ print("device = ", device)
 
 p_model = list_models["burger"]
 
-for k in range(1, 10):    
+for k in range(1, 60):    
     t_linear = []
     t_monarch = []
     t_steam = []
