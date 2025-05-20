@@ -112,7 +112,7 @@ for k in range(1, 10):
     plt.ylabel("Time (s)")
     plt.legend()
     plt.grid(True)
-    plt.savefig("timeit.png")
+    plt.savefig(f"timeit_k{k}.png")
 
 
 

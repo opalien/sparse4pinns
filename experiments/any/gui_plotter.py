@@ -1,15 +1,14 @@
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk
 import json
 import os
 import numpy as np
-import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from collections import defaultdict
 import glob
-from typing import Any, Dict, List, Tuple, Optional, DefaultDict, Set
+from typing import Any, Dict, List, Tuple, Optional, DefaultDict
 
 # --- Global Variables ---
 # To store data for the currently selected experiment
@@ -279,25 +278,39 @@ def plot_paths_data(show_time_plot: bool,
     # --- Setup Plot Axes and Legends ---
     common_title_suffix: str = f"(N={experiment_n_val}, K={experiment_k_val})" if experiment_n_val is not None else ""
 
+    legend_fontsize = 'x-small' # Smaller font for legend
+    bbox_anchor_point = (1.01, 0.5) # Slightly offset from the edge
+
     if has_data_to_plot_train:
         ax_train.set_title(f"Train Loss {common_title_suffix}")
         ax_train.set_xlabel("Total Epochs"); ax_train.set_ylabel("Train Loss")
-        ax_train.legend(loc='best', fontsize='small'); ax_train.set_yscale('log'); ax_train.grid(True, which="both", ls="--")
+        ax_train.legend(loc='center left', bbox_to_anchor=bbox_anchor_point, fontsize=legend_fontsize); 
+        ax_train.set_yscale('log'); ax_train.grid(True, which="both", ls="--")
     else: ax_train.text(0.5, 0.5, "No Train Loss data for selected paths.", ha='center', va='center')
     
     if has_data_to_plot_test:
         ax_test.set_title(f"Test Loss {common_title_suffix}")
         ax_test.set_xlabel("Total Epochs"); ax_test.set_ylabel("Test Loss")
-        ax_test.legend(loc='best', fontsize='small'); ax_test.set_yscale('log'); ax_test.grid(True, which="both", ls="--")
+        ax_test.legend(loc='center left', bbox_to_anchor=bbox_anchor_point, fontsize=legend_fontsize); 
+        ax_test.set_yscale('log'); ax_test.grid(True, which="both", ls="--")
     else: ax_test.text(0.5, 0.5, "No Test Loss data for selected paths.", ha='center', va='center')
 
     if show_time_plot and ax_time:
         if has_data_to_plot_time:
             ax_time.set_title(f"Cumulative Time {common_title_suffix}")
             ax_time.set_xlabel("Total Epochs"); ax_time.set_ylabel("Cumulative Time (s)")
-            ax_time.legend(loc='best', fontsize='small'); ax_time.grid(True, which="both", ls="--", axis='y') # Linear scale for time
+            ax_time.legend(loc='center left', bbox_to_anchor=bbox_anchor_point, fontsize=legend_fontsize); 
+            ax_time.grid(True, which="both", ls="--", axis='y') # Linear scale for time
         else: ax_time.text(0.5, 0.5, "No Time data for selected paths.", ha='center', va='center')
     
+    # Adjust layout to make space for legends
+    # Using a tuple for rect as required by type hints
+    layout_rect: Tuple[float, float, float, float] = (0, 0, 0.75, 1) # rect=[left, bottom, right, top] - Give more space to legend
+    fig_train.tight_layout(rect=layout_rect) 
+    fig_test.tight_layout(rect=layout_rect)
+    if show_time_plot:
+        fig_time.tight_layout(rect=layout_rect)
+
     canvas_train.draw()
     canvas_test.draw()
     canvas_time.draw()
