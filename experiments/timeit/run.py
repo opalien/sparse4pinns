@@ -30,7 +30,7 @@ number = 1_000
 
 
 
-p_model = list_models["burgers"]
+p_model = list_models["burger"]
 
 for k in range(1, 10):    
     t_linear = []
