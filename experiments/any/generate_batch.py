@@ -1,6 +1,6 @@
 import os
-
-M = range(5, 40, 4)
+import numpy as np
+M = [i for i in np.linspace(5, 40, 3, dtype=int)]
 K = [1, 4] #range(1, 5)
 models = ["linear"] #monarch", "steam"]
 equations = ["burger"]

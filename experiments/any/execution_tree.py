@@ -53,7 +53,13 @@ class ExecutionTree:
         self.n_steps = n_steps
         
         if log:
-            self.steps_pos = np.logspace(1, np.log2(epoch_max), n_steps, base=2, endpoint=True, dtype=int)
+            #self.steps_pos = np.logspace(0, np.log2(epoch_max), n_steps, base=2, endpoint=True, dtype=int)
+            #self.steps_pos = [0] + [i*i for i in range(1, len(self.steps_pos))]
+            puiss = [1]
+            while puiss[-1] < epoch_max:
+                puiss.append(puiss[-1] * 2)
+            self.steps_pos = [0] + puiss[-n_steps:]
+            
         else:
             self.steps_pos = [epoch_max // n_steps * i for i in range(n_steps+1) if epoch_max // n_steps * i <= epoch_max]
 
@@ -109,6 +115,7 @@ class ExecutionTree:
         
         model: AnyPINN = cast(AnyPINN, convert(copy.deepcopy(edge.parent.pinn), edge.parent.factor, edge.factor ))
 
+        error = None
         if edge.optimizer == "lbfgs":
             optimizer = optimizers[edge.optimizer](
                 model.parameters(),
@@ -120,10 +127,22 @@ class ExecutionTree:
                 history_size=50,
                 line_search_fn="strong_wolfe"
             )
-            train_losses, _, _, test_losses, times = train_lbfgs(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
+            try:
+                train_losses, _, _, test_losses, times = train_lbfgs(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
+            except Exception as e:
+                edge.child.pinn = None
+                edge.child.possibles_edges = []
+                print(f"Error training with LBFGS: {e}, leaf deleted")
+                error = e
         else:
             optimizer = optimizers[edge.optimizer](model.parameters(), lr=0.001)
-            train_losses, _, _, test_losses, times = train(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
+            try:
+                train_losses, _, _, test_losses, times = train(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
+            except Exception as e:
+                edge.child.pinn = None
+                edge.child.possibles_edges = []
+                print(f"Error training with {edge.optimizer}: {e}, leaf deleted")
+                error = e
 
         model.to(self.buffer_device)
         edge.child.pinn = model
@@ -142,7 +161,8 @@ class ExecutionTree:
             "epoch": edge.epoch,
             "total_epoch": edge.child.total_epoch,
             "parent_id": edge.parent.id,
-            "child_id": edge.child.id
+            "child_id": edge.child.id,
+            "error": error
         }
 
         return dict_model_trained

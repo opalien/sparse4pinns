@@ -51,7 +51,7 @@ def get_experiment_files_with_details() -> List[Tuple[str, str]]:
 
                         if not first_valid_line_processed:
                             n_val = record.get('n')
-                            k_val = record.get('k')
+                            k_val = record.get('k')-2
                             first_valid_line_processed = True
                         
                         epoch_val_candidate = record.get('epoch')
