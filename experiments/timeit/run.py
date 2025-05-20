@@ -28,6 +28,7 @@ save_path = os.path.join("results", "timeit", f'results_{alea}.json')
 M = range(1, 40)
 number = 1_000
 
+print("device = ", device)
 
 
 p_model = list_models["burger"]
@@ -40,7 +41,7 @@ for k in range(1, 10):
         print(f"m = {m}, k = {k}")
         n = m*m
 
-        x = torch.randn(1, n)
+        x = torch.randn(10, 2).to(device)
         
         #linear = nn.Linear(n, n).to(device)
         #monarch = MonarchLinear(n, n).to(device)
