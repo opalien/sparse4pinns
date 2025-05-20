@@ -52,21 +52,24 @@ for k in range(1, 10):
                 *[nn.Linear(n, n) for _ in range(k)],
                 nn.Linear(n, 1),
             ]        
-        linear_model = AnyPINN(layers, p_model["pde"]).to(device)
+        linear_model = torch.compile(AnyPINN(layers, p_model["pde"])).to(device)
 
         layers = [
             nn.Linear(2, n),
             *[MonarchLinear(n, n) for _ in range(k)],
             nn.Linear(n, 1),
         ]
-        monarch_model = AnyPINN(layers, p_model["pde"]).to(device)
+        monarch_model = torch.compile(AnyPINN(layers, p_model["pde"])).to(device)
 
         layers = [
             nn.Linear(2, n),
             *[STEAMLinear(n, n) for _ in range(k)],
             nn.Linear(n, 1),
         ]
-        steam_model = AnyPINN(layers, p_model["pde"]).to(device)
+        for layer in layers[1:k+1]:
+            layer.P0 = layer.Pbar
+            layer.P2 = layer.Pbar
+        steam_model = torch.compile(AnyPINN(layers, p_model["pde"])).to(device)
 
         def timeit_linear():
             linear_model(x)
