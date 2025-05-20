@@ -151,32 +151,48 @@ def train_lbfgs(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer,
     return history_train_loss, history_pde_loss, history_data_loss, history_test_loss, epoch_times # Potentially history_reg_loss
 
 
-
-
-
-def train_one_epoch(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer, device: str | torch.device) -> tuple[float, float, float]:
+def train_one_epoch(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer, device: torch.device):
     model.train()
-    total_loss = 0.0
-    total_pde_loss = 0.0
-    total_data_loss = 0.0
-    n_batches = 0
+    model.to(device)
 
-    for batch in train_loader:
+    total_loss: float = 0.0
+    total_pde_loss: float = 0.0
+    total_data_loss: float = 0.0
+
+    num_batches: int = 0
+    for i, (a, u, idx) in enumerate(train_loader): # type: ignore
+        a: Tensor = a.float().to(device)
+        u: Tensor = u.float().to(device)
         optimizer.zero_grad()
-        loss, pde_loss, data_loss = model.loss(batch, device)
-        loss.backward()
+
+        model(a)
+
+        loss = model.loss(u, idx)
+        pde_loss = model.get_pde_loss()
+        data_loss = model.get_pde_loss()
+
         
-        # Add gradient clipping
-        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        if torch.isnan(loss) or torch.isinf(loss):
+            if torch.isnan(pde_loss) or torch.isinf(pde_loss):
+                raise ValueError(f"Warning: Invalid PDE loss detected: {pde_loss.item()}. Skipping batch.")
+            if torch.isnan(data_loss) or torch.isinf(data_loss):
+                raise ValueError(f"Warning: Invalid data loss detected: {data_loss.item()}. Skipping batch.")
+            raise ValueError(f"Warning: Invalid loss detected: {loss.item()}. Skipping batch.")
+            
+            
+        
+        if loss.backward() != None: # type: ignore
+            raise ValueError(f"Warning: backward loss invalid: {loss.item()}. Skipping batch.")
         
         optimizer.step()
 
         total_loss += loss.item()
         total_pde_loss += pde_loss.item()
         total_data_loss += data_loss.item()
-        n_batches += 1
+        num_batches += 1
 
-    return total_loss / n_batches, total_pde_loss / n_batches, total_data_loss / n_batches
+
+    return (total_loss / num_batches, total_pde_loss / num_batches, total_data_loss / num_batches) if num_batches > 0 else (0.0, 0.0, 0.0)
 
     
 
@@ -212,3 +228,63 @@ def train(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer, devic
 
     return train_losses, pde_losses, data_losses, test_losses, times
     
+
+
+#def train_one_epoch(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer, device: str | torch.device) -> tuple[float, float, float]:
+#    model.train()
+#    total_loss = 0.0
+#    total_pde_loss = 0.0
+#    total_data_loss = 0.0
+#    n_batches = 0
+#
+#    for batch in train_loader:
+#        optimizer.zero_grad()
+#        loss, pde_loss, data_loss = model.loss(batch, device)
+#        loss.backward()
+#        
+#        # Add gradient clipping
+#        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+#        
+#        optimizer.step()
+#
+#        total_loss += loss.item()
+#        total_pde_loss += pde_loss.item()
+#        total_data_loss += data_loss.item()
+#        n_batches += 1
+#
+#    return total_loss / n_batches, total_pde_loss / n_batches, total_data_loss / n_batches
+#
+#    
+#
+#def train(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer, device: torch.device, epochs: int, test_loader: PINNDataloader | None = None, verbose: bool = True):
+#    model.to(device)
+#
+#    train_losses: list[float] = []
+#    pde_losses: list[float] = []
+#    data_losses: list[float] = []
+#    times: list[float] = []
+#
+#    test_losses: list[float] | None = [] if test_loader is not None else None
+#
+#
+#    for epoch in range(epochs):
+#        t0 = time.time()
+#        trail_loss, pde_loss, data_loss = train_one_epoch(model, train_loader, optimizer, device)
+#        t1 = time.time()
+#        times.append(t1 - t0)
+#        train_losses.append(trail_loss)
+#        pde_losses.append(pde_loss)
+#        data_losses.append(data_loss)
+#
+#
+#        if test_losses is not None and test_loader is not None:
+#            test_losses.append(accuracy(model, test_loader, device))
+#
+#        if verbose:
+#            print(f"Epoch {epoch+1}/{epochs}, Train Loss: {train_losses[-1]:.4f}, Data Loss: {data_losses[-1]:.4f}, PDE Loss: {pde_losses[-1]:.4f}",  end="")
+#            if test_losses is not None:
+#                print(f", Test Loss: {test_losses[-1]:.4f}", end="")
+#            print()
+#
+#    return train_losses, pde_losses, data_losses, test_losses, times
+#    
