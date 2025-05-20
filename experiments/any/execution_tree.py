@@ -69,7 +69,10 @@ class ExecutionTree:
         self.possibles_edges = [(factor, opt) for opt in optimizers.keys() for factor in ["monarch", "linear"] ]
 
         # PINN, epoch_total, id
-        self.nodes: list[Node] = [Node(pinn, 0, 0, self.possibles_edges, 0, "linear")]
+        node0 = Node(pinn, 0, 0, self.possibles_edges, 0, "linear")
+        node0.possibles_edges.pop(2)
+
+        self.nodes: list[Node] = [node0]
 
         # parent, child, factor, optimizers, epoch
         self.edges: list[Edge] = []
@@ -119,12 +122,12 @@ class ExecutionTree:
         if edge.optimizer == "lbfgs":
             optimizer = optimizers[edge.optimizer](
                 model.parameters(),
-                lr=lr,
-                max_iter=20,
-                max_eval=25,
+                lr=1.0,
+                max_iter=50,
+                max_eval=80,
                 tolerance_grad=1e-7,
                 tolerance_change=1e-9,
-                history_size=50,
+                history_size=150,
                 line_search_fn="strong_wolfe"
             )
             try:
@@ -134,6 +137,7 @@ class ExecutionTree:
                 edge.child.possibles_edges = []
                 print(f"Error training with LBFGS: {e}, leaf deleted")
                 error = e
+                train_losses, test_losses, times = None, None, None
         else:
             optimizer = optimizers[edge.optimizer](model.parameters(), lr=0.001)
             try:
@@ -143,6 +147,7 @@ class ExecutionTree:
                 edge.child.possibles_edges = []
                 print(f"Error training with {edge.optimizer}: {e}, leaf deleted")
                 error = e
+                train_losses, test_losses, times = None, None, None
 
         model.to(self.buffer_device)
         edge.child.pinn = model

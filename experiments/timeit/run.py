@@ -25,7 +25,7 @@ print(f"Séquence aléatoire générée: {alea}")
 
 save_path = os.path.join("results", "timeit", f'results_{alea}.json')
 
-M = [i for i in range(1, 60)]
+M = [i for i in range(1, 100)]
 number = 1_000
 
 print("device = ", device)
