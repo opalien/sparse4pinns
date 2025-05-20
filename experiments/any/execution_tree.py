@@ -118,7 +118,7 @@ class ExecutionTree:
         
         model: AnyPINN = cast(AnyPINN, convert(copy.deepcopy(edge.parent.pinn), edge.parent.factor, edge.factor ))
 
-        error = None
+        error = ""
         if edge.optimizer == "lbfgs":
             optimizer = optimizers[edge.optimizer](
                 model.parameters(),
@@ -136,7 +136,7 @@ class ExecutionTree:
                 edge.child.pinn = None
                 edge.child.possibles_edges = []
                 print(f"Error training with LBFGS: {e}, leaf deleted")
-                error = e
+                error = str(e)
                 train_losses, test_losses, times = None, None, None
         else:
             optimizer = optimizers[edge.optimizer](model.parameters(), lr=0.001)
@@ -146,7 +146,7 @@ class ExecutionTree:
                 edge.child.pinn = None
                 edge.child.possibles_edges = []
                 print(f"Error training with {edge.optimizer}: {e}, leaf deleted")
-                error = e
+                error = str(e)
                 train_losses, test_losses, times = None, None, None
 
         model.to(self.buffer_device)
