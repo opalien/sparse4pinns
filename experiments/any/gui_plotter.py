@@ -222,6 +222,7 @@ def format_path_description(desc_tuple: Tuple[Any, ...]) -> str:
     return " -> ".join(parts)
 
 def plot_paths_data(show_time_plot: bool, 
+                      show_legend_plot: bool,
                       fig_train: Figure, canvas_train: FigureCanvasTkAgg, 
                       fig_test: Figure, canvas_test: FigureCanvasTkAgg, 
                       fig_time: Figure, canvas_time: FigureCanvasTkAgg):
@@ -278,20 +279,22 @@ def plot_paths_data(show_time_plot: bool,
     # --- Setup Plot Axes and Legends ---
     common_title_suffix: str = f"(N={experiment_n_val}, K={experiment_k_val})" if experiment_n_val is not None else ""
 
-    legend_fontsize = 'x-small' # Smaller font for legend
-    bbox_anchor_point = (1.01, 0.5) # Slightly offset from the edge
+    legend_fontsize = 'x-small' 
+    # bbox_anchor_point = (1.01, 0.5) # No longer needed for external legend by default
 
     if has_data_to_plot_train:
         ax_train.set_title(f"Train Loss {common_title_suffix}")
         ax_train.set_xlabel("Total Epochs"); ax_train.set_ylabel("Train Loss")
-        ax_train.legend(loc='center left', bbox_to_anchor=bbox_anchor_point, fontsize=legend_fontsize); 
+        if show_legend_plot:
+            ax_train.legend(loc='best', fontsize=legend_fontsize); 
         ax_train.set_yscale('log'); ax_train.grid(True, which="both", ls="--")
     else: ax_train.text(0.5, 0.5, "No Train Loss data for selected paths.", ha='center', va='center')
     
     if has_data_to_plot_test:
         ax_test.set_title(f"Test Loss {common_title_suffix}")
         ax_test.set_xlabel("Total Epochs"); ax_test.set_ylabel("Test Loss")
-        ax_test.legend(loc='center left', bbox_to_anchor=bbox_anchor_point, fontsize=legend_fontsize); 
+        if show_legend_plot:
+            ax_test.legend(loc='best', fontsize=legend_fontsize); 
         ax_test.set_yscale('log'); ax_test.grid(True, which="both", ls="--")
     else: ax_test.text(0.5, 0.5, "No Test Loss data for selected paths.", ha='center', va='center')
 
@@ -299,17 +302,16 @@ def plot_paths_data(show_time_plot: bool,
         if has_data_to_plot_time:
             ax_time.set_title(f"Cumulative Time {common_title_suffix}")
             ax_time.set_xlabel("Total Epochs"); ax_time.set_ylabel("Cumulative Time (s)")
-            ax_time.legend(loc='center left', bbox_to_anchor=bbox_anchor_point, fontsize=legend_fontsize); 
+            if show_legend_plot:
+                ax_time.legend(loc='best', fontsize=legend_fontsize); 
             ax_time.grid(True, which="both", ls="--", axis='y') # Linear scale for time
         else: ax_time.text(0.5, 0.5, "No Time data for selected paths.", ha='center', va='center')
     
-    # Adjust layout to make space for legends
-    # Using a tuple for rect as required by type hints
-    layout_rect: Tuple[float, float, float, float] = (0, 0, 0.75, 1) # rect=[left, bottom, right, top] - Give more space to legend
-    fig_train.tight_layout(rect=layout_rect) 
-    fig_test.tight_layout(rect=layout_rect)
+    # General layout adjustment
+    fig_train.tight_layout() 
+    fig_test.tight_layout()
     if show_time_plot:
-        fig_time.tight_layout(rect=layout_rect)
+        fig_time.tight_layout()
 
     canvas_train.draw()
     canvas_test.draw()
@@ -346,6 +348,10 @@ class PlotterApp:
         # Checkbox for showing time plot
         self.show_time_var: tk.BooleanVar = tk.BooleanVar(value=True)
         ttk.Checkbutton(controls_frame, text="Show Time Plot", variable=self.show_time_var, command=self.trigger_plot_redraw).pack(side=tk.LEFT, padx=10)
+
+        # Checkbox for showing legend
+        self.show_legend_var: tk.BooleanVar = tk.BooleanVar(value=True)
+        ttk.Checkbutton(controls_frame, text="Show Legend", variable=self.show_legend_var, command=self.trigger_plot_redraw).pack(side=tk.LEFT, padx=10)
 
         # --- Plotting Frames ---
         # Top frame for Train and Test Loss plots
@@ -433,6 +439,7 @@ class PlotterApp:
 
     def trigger_plot_redraw(self) -> None:
         show_time: bool = self.show_time_var.get()
+        show_legend: bool = self.show_legend_var.get()
 
         if show_time:
             self.bottom_plot_frame.pack(side=tk.BOTTOM, fill=tk.BOTH, expand=True)
@@ -440,6 +447,7 @@ class PlotterApp:
             self.bottom_plot_frame.pack_forget()
         
         plot_paths_data(show_time, 
+                        show_legend,
                         self.fig_train, self.canvas_train, 
                         self.fig_test, self.canvas_test, 
                         self.fig_time, self.canvas_time)
