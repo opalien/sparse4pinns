@@ -36,7 +36,7 @@ parser.add_argument("-m", "--m_matrix", type=int, default=1, help="coté de la m
 parser.add_argument("-k", "--k_layers", type=int, default=1, help="Un nombre (défaut: 1)")
 parser.add_argument("-f", "--factorization", type=str, default="linear", help="monarch, steam (défaut: monarch)")
 
-parser.add_argument("-l", "--log", type=bool, default=False, help="log file")
+parser.add_argument("-l", "--log", type=int, default=0, help="log file")
 
 args = parser.parse_args()
 
@@ -56,7 +56,7 @@ N = [args.m_matrix**2]#m*m for m in range(5, 40)]
 K = [args.k_layers]
 R = range(args.repetition)
 
-log = args.log
+log = False if args.log == 0 else True
 
 if args.problem not in list_models:
     raise ValueError(f"Problem {args.problem} not found in list_models.")
@@ -71,7 +71,7 @@ if __name__ == "__main__":
                         for n in N 
                         for k in K ]:
         
-        print("n, k, r = ", n, k, r)
+        print("n, k, r, log = ", n, k, r, log)
 
         time_bounds = p_model["bounds"][0]
         spatial_bounds = p_model["bounds"][1:]

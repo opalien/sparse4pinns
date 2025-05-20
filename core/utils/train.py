@@ -66,8 +66,6 @@ def train_one_epoch_lbfgs(model: PINN, train_loader: PINNDataloader, optimizer: 
             pde_loss = model.get_pde_loss()    
             data_loss = model.get_data_loss()  
 
-            # print(f"Batch LBFGS - loss: {loss.item():.6e}, pde_loss: {pde_loss.item():.6e}, data_loss: {data_loss.item():.6e}, sum_comp: {(pde_loss.item() + data_loss.item()):.6e}")
-
             if torch.isnan(loss) or torch.isinf(loss):
                  raise ValueError(f"LBFGS: Invalid loss detected in closure: {float(loss.item())}.")
             
@@ -85,6 +83,8 @@ def train_one_epoch_lbfgs(model: PINN, train_loader: PINNDataloader, optimizer: 
 
         if total_loss_for_closure.requires_grad:
             total_loss_for_closure.backward()
+            # Add gradient clipping
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         
         _pde_loss_sum_last_closure = current_closure_pde_loss_sum
         _data_loss_sum_last_closure = current_closure_data_loss_sum
@@ -154,48 +154,29 @@ def train_lbfgs(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer,
 
 
 
-def train_one_epoch(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer, device: torch.device):
+def train_one_epoch(model: PINN, train_loader: PINNDataloader, optimizer: Optimizer, device: str | torch.device) -> tuple[float, float, float]:
     model.train()
-    model.to(device)
+    total_loss = 0.0
+    total_pde_loss = 0.0
+    total_data_loss = 0.0
+    n_batches = 0
 
-    total_loss: float = 0.0
-    total_pde_loss: float = 0.0
-    total_data_loss: float = 0.0
-
-    num_batches: int = 0
-    for i, (a, u, idx) in enumerate(train_loader): # type: ignore
-        a: Tensor = a.float().to(device)
-        u: Tensor = u.float().to(device)
+    for batch in train_loader:
         optimizer.zero_grad()
-
-        model(a)
-
-        loss = model.loss(u, idx)
-        pde_loss = model.get_pde_loss()
-        data_loss = model.get_data_loss()
-
+        loss, pde_loss, data_loss = model.loss(batch, device)
+        loss.backward()
         
-        if torch.isnan(loss) or torch.isinf(loss):
-            if torch.isnan(pde_loss) or torch.isinf(pde_loss):
-                raise ValueError(f"Warning: Invalid PDE loss detected: {pde_loss.item()}. Skipping batch.")
-            if torch.isnan(data_loss) or torch.isinf(data_loss):
-                raise ValueError(f"Warning: Invalid data loss detected: {data_loss.item()}. Skipping batch.")
-            raise ValueError(f"Warning: Invalid loss detected: {loss.item()}. Skipping batch.")
-            
-            
-        
-        if loss.backward() != None: # type: ignore
-            raise ValueError(f"Warning: backward loss invalid: {loss.item()}. Skipping batch.")
+        # Add gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
         
         optimizer.step()
 
         total_loss += loss.item()
         total_pde_loss += pde_loss.item()
         total_data_loss += data_loss.item()
-        num_batches += 1
+        n_batches += 1
 
-
-    return (total_loss / num_batches, total_pde_loss / num_batches, total_data_loss / num_batches) if num_batches > 0 else (0.0, 0.0, 0.0)
+    return total_loss / n_batches, total_pde_loss / n_batches, total_data_loss / n_batches
 
     
 

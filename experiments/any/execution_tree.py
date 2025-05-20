@@ -20,7 +20,7 @@ optimizers = {
     "adam": torch.optim.Adam
 }
 
-lr = 0.001
+lr = 0.0001
 
 class Node:
     def __init__(self, pinn: AnyPINN | None, total_epoch: int, id: int, possibles_edges: list[tuple[str, str]], current_steps: int, factor: str):
@@ -109,17 +109,26 @@ class ExecutionTree:
         
         model: AnyPINN = cast(AnyPINN, convert(copy.deepcopy(edge.parent.pinn), edge.parent.factor, edge.factor ))
 
-        optimizer = optimizers[edge.optimizer](model.parameters(), lr=lr)
-
         if edge.optimizer == "lbfgs":
+            optimizer = optimizers[edge.optimizer](
+                model.parameters(),
+                lr=lr,
+                max_iter=20,
+                max_eval=25,
+                tolerance_grad=1e-7,
+                tolerance_change=1e-9,
+                history_size=50,
+                line_search_fn="strong_wolfe"
+            )
             train_losses, _, _, test_losses, times = train_lbfgs(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
         else:
+            optimizer = optimizers[edge.optimizer](model.parameters(), lr=0.001)
             train_losses, _, _, test_losses, times = train(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
+
         model.to(self.buffer_device)
         edge.child.pinn = model
 
         print("model trained")
-
 
         dict_model_trained = {
             "train_losses": train_losses,
