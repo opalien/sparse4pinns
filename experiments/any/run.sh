@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --array=0-13%3
+#SBATCH --array=0-13%4
 #SBATCH --job-name=sparse4pinn
 #SBATCH --partition=gpu
 #SBATCH --nodes=1                # nombre de noeuds
