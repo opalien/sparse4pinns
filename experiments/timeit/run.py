@@ -25,7 +25,7 @@ print(f"Séquence aléatoire générée: {alea}")
 
 save_path = os.path.join("results", "timeit", f'results_{alea}.json')
 
-M = range(1, 40)
+M = [i for i in range(1, 40)]
 number = 1_000
 
 print("device = ", device)
@@ -103,15 +103,16 @@ for k in range(1, 10):
 
 
 
-from matplotlib import pyplot as plt
-plt.plot(M, t_linear, label="Linear")
-plt.plot(M, t_monarch, label="Monarch")
-#plt.plot(M, t_steam, label="STEAM")
-plt.xlabel("m (n = m*m)")
-plt.ylabel("Time (s)")
-plt.legend()
-plt.grid(True)
-plt.savefig("timeit.png")
+    from matplotlib import pyplot as plt
+    plt.clf()
+    plt.plot(M, t_linear, label="Linear")
+    plt.plot(M, t_monarch, label="Monarch")
+    #plt.plot(M, t_steam, label="STEAM")
+    plt.xlabel("m (n = m*m)")
+    plt.ylabel("Time (s)")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("timeit.png")
 
 
 
