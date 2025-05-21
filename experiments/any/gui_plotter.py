@@ -34,7 +34,7 @@ def get_experiment_files_with_details() -> List[Tuple[str, str]]:
     for basename in files_basenames:
         filepath: str = os.path.join(EXPERIMENT_FILES_DIR, basename)
         n_val: Optional[int] = None
-        k_val: Optional[int] = None
+        k_val_internal: Optional[int] = None # Use a temporary internal k representation
         epoch_values: List[int] = []
         first_valid_line_processed: bool = False
 
@@ -51,7 +51,14 @@ def get_experiment_files_with_details() -> List[Tuple[str, str]]:
 
                         if not first_valid_line_processed:
                             n_val = record.get('n')
-                            k_val = record.get('k')-2
+                            # Safely get and adjust k
+                            k_from_record = record.get('k')
+                            if isinstance(k_from_record, int):
+                                k_val_internal = k_from_record - 2 
+                            elif k_from_record is None:
+                                k_val_internal = None # Explicitly None if not found
+                            else: # Not an int, not None -> problematic, treat as unknown for display
+                                k_val_internal = None 
                             first_valid_line_processed = True
                         
                         epoch_val_candidate = record.get('epoch')
@@ -73,7 +80,7 @@ def get_experiment_files_with_details() -> List[Tuple[str, str]]:
                 scale_str = "Log"
 
             n_display: str = str(n_val) if n_val is not None else "?"
-            k_display: str = str(k_val) if k_val is not None else "?"
+            k_display: str = str(k_val_internal) if k_val_internal is not None else "?"
             
             display_name: str = f"{basename} (N={n_display}, K={k_display}, Scale={scale_str})"
             detailed_files_info.append((display_name, basename))
@@ -254,26 +261,47 @@ def plot_paths_data(show_time_plot: bool,
     has_data_to_plot_test: bool = False
     has_data_to_plot_time: bool = False
 
+    # --- Identify best path based on final test loss ---
+    best_path_desc: Optional[Tuple[Any, ...]] = None
+    min_last_test_loss: float = float('inf')
+
+    if compiled_paths: # Ensure there are paths to check
+        for path_desc_tuple_check, path_data_check in compiled_paths.items():
+            test_losses_check = path_data_check.get("test", [])
+            if test_losses_check:
+                last_test_loss = test_losses_check[-1]
+                if last_test_loss < min_last_test_loss:
+                    min_last_test_loss = last_test_loss
+                    best_path_desc = path_desc_tuple_check
+    # --- End of identifying best path ---
+
     for path_desc_tuple, path_data in compiled_paths.items():
-        label: str = format_path_description(path_desc_tuple)
+        is_best_path = (path_desc_tuple == best_path_desc)
         
+        label_prefix = "*BEST* " if is_best_path else ""
+        label: str = label_prefix + format_path_description(path_desc_tuple)
+        
+        current_linewidth = 2.0 if is_best_path else 0.8
+        current_alpha = 1.0 if is_best_path else 0.6
+        current_zorder = 10 if is_best_path else 1 # Ensure best path is drawn on top
+
         train_losses: List[float] = path_data.get("train", [])
         test_losses: List[float] = path_data.get("test", [])
         cumulative_times: List[float] = path_data.get("cumulative_time", [])
 
         if train_losses:
             epochs_axis: np.ndarray[Any, Any] = np.arange(1, len(train_losses) + 1)
-            ax_train.plot(epochs_axis, train_losses, label=label, alpha=0.8)
+            ax_train.plot(epochs_axis, train_losses, label=label, alpha=current_alpha, linewidth=current_linewidth, zorder=current_zorder)
             has_data_to_plot_train = True
         
         if test_losses:
             epochs_axis_test: np.ndarray[Any, Any] = np.arange(1, len(test_losses) + 1) # Renamed to avoid conflict if types differ
-            ax_test.plot(epochs_axis_test, test_losses, label=label, alpha=0.8)
+            ax_test.plot(epochs_axis_test, test_losses, label=label, alpha=current_alpha, linewidth=current_linewidth, zorder=current_zorder)
             has_data_to_plot_test = True
 
         if show_time_plot and ax_time and cumulative_times:
             epochs_axis_time: np.ndarray[Any, Any] = np.arange(1, len(cumulative_times) + 1) # Renamed
-            ax_time.plot(epochs_axis_time, cumulative_times, label=label, alpha=0.8)
+            ax_time.plot(epochs_axis_time, cumulative_times, label=label, alpha=current_alpha, linewidth=current_linewidth, zorder=current_zorder)
             has_data_to_plot_time = True
 
     # --- Setup Plot Axes and Legends ---
