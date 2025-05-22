@@ -12,6 +12,7 @@ from core.utils.convert import convert
 from core.utils.save import save_result
 import copy
 from typing import cast
+import pickle
 
 
 
@@ -31,6 +32,9 @@ class Node:
         self.current_steps = current_steps
         self.factor = factor
 
+    def __str__(self):
+        return f"Node(id={self.id}, pinn={self.pinn is not None}, total_epoch={self.total_epoch}, current_steps={self.current_steps}, factor={self.factor})"
+
 class Edge:
     def __init__(self, parent: Node, child: Node, factor: str, optimizer: str, epoch: int):
         self.parent = parent
@@ -39,20 +43,34 @@ class Edge:
         self.optimizer = optimizer
         self.epoch = epoch
 
+        self.parent_id = parent.id
+        self.child_id = child.id
+
+    def __str__(self):
+        return f"Edge(parent_id={self.parent_id}, child_id={self.child_id}, factor={self.factor}, optimizer={self.optimizer}, epoch={self.epoch})"
+
 
 class ExecutionTree:
-    def __init__(self, epoch_max: int, n_steps: int, device: str | torch.device, train_dataloader: PINNDataloader, test_dataloader: PINNDataloader, pinn: AnyPINN, log: bool = False):
+    def __init__(self, epoch_max: int, n_steps: int, device: str | torch.device, train_dataloader: PINNDataloader, test_dataloader: PINNDataloader, pinn: AnyPINN, work_dir: str, scheduler: str = "linear", alea: str | None = None ):
         
-        lettres = string.ascii_letters
-        alea = ''.join(random.choice(lettres) for _ in range(10))
-        print(f"Séquence aléatoire générée: {alea}")
+        self.work_dir_root = work_dir
 
-        self.save_path = os.path.join("results", "any", f'results_{alea}.json')
+
+
+
+        lettres = string.ascii_letters
+        self.alea = ''.join(random.choice(lettres) for _ in range(10)) if alea is None else alea
+        print(f"Séquence aléatoire: {self.alea}")
+
+        self.work_dir = os.path.join(work_dir, self.alea)
+        os.makedirs(self.work_dir, exist_ok=True)
+
+        #self.save_path = os.path.join(self.work_dir, self.alea, 'results.json')
 
         self.epoch_max = epoch_max
         self.n_steps = n_steps
         
-        if log:
+        if scheduler == "log":
             #self.steps_pos = np.logspace(0, np.log2(epoch_max), n_steps, base=2, endpoint=True, dtype=int)
             #self.steps_pos = [0] + [i*i for i in range(1, len(self.steps_pos))]
             puiss = [1]
@@ -71,7 +89,6 @@ class ExecutionTree:
         # PINN, epoch_total, id
         node0 = Node(pinn, 0, 0, self.possibles_edges, 0, "linear")
         node0.possibles_edges.pop(2)
-
         self.nodes: list[Node] = [node0]
 
         # parent, child, factor, optimizers, epoch
@@ -84,13 +101,17 @@ class ExecutionTree:
         self.test_dataloader = test_dataloader
 
     
+    def set_alea(self, alea: str):
+        self.alea = alea
+        self.work_dir = os.path.join(self.work_dir_root, self.alea)
+        os.makedirs(self.work_dir, exist_ok=True)
     
     def get_next_edge(self):        
         i = 0    
         parent : Node | None = None
         for i, parent in [(i, self.nodes[i]) for i in reversed(range(len(self.nodes)))]:
             if parent.pinn is not None and (parent.total_epoch >= self.epoch_max or len(parent.possibles_edges) == 0 or parent.current_steps >= len(self.epochs)):
-                parent.pinn = None
+                #parent.pinn = None
                 parent.possibles_edges = []
                 continue
 
@@ -107,7 +128,7 @@ class ExecutionTree:
 
         child = Node(None, parent.total_epoch + epoch, -1, self.possibles_edges, parent.current_steps+1, factor)
         edge = Edge(parent, child, factor, optimizer, epoch)
-
+        edge.parent_id = parent.id
         return edge
     
     def train_one_step(self, edge: Edge):
@@ -180,14 +201,60 @@ class ExecutionTree:
 
             edge.child.id = len(self.nodes)
             dict_model["child_id"] = edge.child.id
+            edge.child_id = edge.child.id
 
             self.nodes.append(edge.child)
             self.edges.append(edge)
 
-            save_result(self.save_path, dict_model)
+            save_result(os.path.join(self.work_dir, f"results.json"), dict_model)
 
-            print([node.id for node in self.nodes])
 
+    def one_step(self, edge: Edge | None = None):        
+        
+        if edge is not None:
+            dict_model = self.train_one_step(edge)
+            save_result(os.path.join(self.work_dir, f"results.json"), dict_model)
+
+
+        edges = self.get_all_edges()
+        print(f"edges: {edges}")
+        pickle.dump(self, open(os.path.join(self.work_dir, f"tree.pkl"), "wb"))
+        match len(edges):
+            case 0:
+                save_result(os.path.join(self.work_dir, f"infos.json"), {"is_leaf": True})
+            case _:
+                os.makedirs(os.path.join(self.work_dir, "edges"), exist_ok=True)
+                for i, edge in enumerate(edges):                    
+                    pickle.dump(edge, open(os.path.join(self.work_dir, "edges", f"edges_{i}.pkl"), "wb"))
+                save_result(os.path.join(self.work_dir, f"infos.json"), {"is_leaf": False})
+
+
+        with open(os.path.join(self.work_dir, f"finished"), 'w') as _:
+            pass
+        return
+
+        #################
+        
+        edges = self.get_all_edges()
+        if len(edges) == 0:
+            pickle.dump(self, open(os.path.join(self.work_dir, f"tree.pkl"), "wb"))
+            save_result(os.path.join(self.work_dir, f"is_finished.json"), {"is_finished": True, "is_leaf": True})
+            with open(os.path.join(self.work_dir, f"end"), 'w') as _:
+                pass
+            return
+
+        pickle.dump(edges, open(os.path.join(self.work_dir, f"edges.pkl"), "wb"))
+        pickle.dump(self, open(os.path.join(self.work_dir, f"tree.pkl"), "wb"))
+        save_result(os.path.join(self.work_dir, f"is_finished.json"), {"is_finished": True, "is_leaf": False})
+        with open(os.path.join(self.work_dir, f"end"), 'w') as _:
+            pass
+
+
+    def get_all_edges(self):
+        edges: list[Edge] = []
+        while (edge := self.get_next_edge()) is not None:
+            edges.append(edge)
+        return edges
 
 if __name__ == "__main__":
     from examples.any.list_models import list_models
@@ -234,5 +301,5 @@ if __name__ == "__main__":
     linear_model = AnyPINN(layers, p_model["pde"])
     print("linear model done")
 
-    execution_tree = ExecutionTree(epoch_max=10, n_steps=10, device="cpu", train_dataloader=train_dataloader, test_dataloader=test_dataloader, pinn=linear_model)
+    execution_tree = ExecutionTree(epoch_max=100, n_steps=10, device="cpu", train_dataloader=train_dataloader, test_dataloader=test_dataloader, pinn=linear_model)
     execution_tree.run()
