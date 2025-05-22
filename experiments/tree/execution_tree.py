@@ -105,32 +105,49 @@ class ExecutionTree:
         self.alea = alea
         self.work_dir = os.path.join(self.work_dir_root, self.alea)
         os.makedirs(self.work_dir, exist_ok=True)
+        print(f"work_dir: {self.work_dir}")
     
-    def get_next_edge(self):        
-        i = 0    
-        parent : Node | None = None
-        for i, parent in [(i, self.nodes[i]) for i in reversed(range(len(self.nodes)))]:
-            if parent.pinn is not None and (parent.total_epoch >= self.epoch_max or len(parent.possibles_edges) == 0 or parent.current_steps >= len(self.epochs)):
-                #parent.pinn = None
-                parent.possibles_edges = []
+#    def get_next_edge(self):        
+#        i = 0    
+#        parent : Node | None = None
+#        for i, parent in [(i, self.nodes[i]) for i in reversed(range(len(self.nodes)))]:
+#            if parent.pinn is not None and (parent.total_epoch >= self.epoch_max or len(parent.possibles_edges) == 0 or parent.current_steps >= len(self.epochs)):
+#                #parent.pinn = None
+#                parent.possibles_edges = []
+#                continue
+#
+#            if parent.pinn is None:
+#                continue  
+#
+#            break
+#
+#        if parent is None or parent.pinn is None:
+#            return None
+#
+#        factor, optimizer = parent.possibles_edges.pop()
+#        epoch = self.epochs[parent.current_steps]
+#
+#        child = Node(None, parent.total_epoch + epoch, -1, self.possibles_edges, parent.current_steps+1, factor)
+#        edge = Edge(parent, child, factor, optimizer, epoch)
+#        edge.parent_id = parent.id
+#        return edge
+    
+
+    def get_next_edge(self):
+        edge_proto: tuple[str, str] | None = None
+        parent: Node | None = None
+        for parent in reversed(self.nodes):
+            if len(parent.possibles_edges) == 0:
                 continue
-
-            if parent.pinn is None:
-                continue  
-
+            edge_proto = parent.possibles_edges.pop()
             break
-
-        if parent is None or parent.pinn is None:
+        if edge_proto is None or parent is None:
             return None
-
-        factor, optimizer = parent.possibles_edges.pop()
-        epoch = self.epochs[parent.current_steps]
-
-        child = Node(None, parent.total_epoch + epoch, -1, self.possibles_edges, parent.current_steps+1, factor)
-        edge = Edge(parent, child, factor, optimizer, epoch)
-        edge.parent_id = parent.id
+        
+        child = Node(None, parent.total_epoch + self.epochs[parent.current_steps], -1, self.possibles_edges, parent.current_steps+1, edge_proto[0])
+        edge = Edge(parent, child, edge_proto[0], edge_proto[1], self.epochs[parent.current_steps])
         return edge
-    
+
     def train_one_step(self, edge: Edge):
         if edge.parent.pinn is None:
             raise ValueError("Parent PINN is None")
@@ -215,6 +232,11 @@ class ExecutionTree:
             dict_model = self.train_one_step(edge)
             save_result(os.path.join(self.work_dir, f"results.json"), dict_model)
 
+            edge.child.id = len(self.nodes)
+            dict_model["child_id"] = edge.child.id
+            edge.child_id = edge.child.id
+            self.nodes.append(edge.child)
+            self.edges.append(edge)
 
         edges = self.get_all_edges()
         print(f"edges: {edges}")
