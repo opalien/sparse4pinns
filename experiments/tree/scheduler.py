@@ -57,9 +57,11 @@ MAX_CURRENT_PROCESSES = 3
 list_processes = []
 
 def slurm_check():
+    print("slurm_check")
     global list_processes
     global MAX_CURRENT_PROCESSES
 
+    print("slurm_check 2")
     with open("max_current_processes_file", "r") as f:
         new_max_current_processes = int(f.read())
         if new_max_current_processes != MAX_CURRENT_PROCESSES:
@@ -158,14 +160,14 @@ if __name__ == "__main__":
                             ] 
                         # Lancement de la commande en mode non bloquant
                         while not slurm_check():
-                            sleep(10.)
+                            sleep(1.)
                         list_processes.append(subprocess.Popen(command_list))
                         print(f"Launched process for: {edge_path}")
 
                     else:
                         os.remove(edge_path+".using")
         
-        sleep(120.)
+        sleep(10.)
                     
             
 

@@ -167,8 +167,8 @@ class ExecutionTree:
             optimizer = optimizers[edge.optimizer](
                 model.parameters(),
                 lr=1.0,
-                max_iter=50,
-                max_eval=80,
+                max_iter=10,
+                max_eval=20,
                 tolerance_grad=1e-7,
                 tolerance_change=1e-9,
                 history_size=150,
