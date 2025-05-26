@@ -14,7 +14,7 @@ import copy
 from typing import cast
 import pickle
 
-from experiments.tree.monoid import monoid_phases
+from experiments.tree.monoid import monoid_phases, monoid_etendue
 
 
 
@@ -224,8 +224,10 @@ class ExecutionTree:
         return dict_model_trained
     
 
+
     def run(self):
         while (edge := self.get_next_edge()) is not None:
+
             dict_model = self.train_one_step(edge)
             
 
