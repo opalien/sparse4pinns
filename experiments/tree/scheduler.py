@@ -116,7 +116,7 @@ if __name__ == "__main__":
 
     loop = True
     while loop:
-
+        
         for dir in os.listdir(work_dir):
             if os.path.exists(os.path.join(work_dir, dir, "finished")) and os.path.exists(os.path.join(work_dir, dir, "edges")):
                 # if edges is non empty
@@ -165,7 +165,7 @@ if __name__ == "__main__":
                     else:
                         os.remove(edge_path+".using")
         
-        sleep(10.)
+        sleep(120.)
                     
             
 
