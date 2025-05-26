@@ -7,6 +7,9 @@ import argparse
 from time import sleep
 import subprocess
 
+import string
+import random
+
 from experiments.tree.execution_tree import ExecutionTree
 from examples.any.dataset import TrainAnyDataset, TestAnyDataset
 from examples.any.list_models import list_models
@@ -20,7 +23,8 @@ parser.add_argument("-m", "--m_matrix", type=int, default=5, help="coté de la m
 parser.add_argument("-k", "--k_layers", type=int, default=1, help="Un nombre (défaut: 1)")
 parser.add_argument("-s", "--scheduler", type=str, default="linear", help="log, linear (défaut: linear)")
 parser.add_argument("-p", "--steps", type=int, default=2, help="Un nombre (défaut: 2)")
-parser.add_argument("-c", "--continued", type=bool, default=False, help="Continue from last instance")
+parser.add_argument("-c", "--continued", type=str, default="", help="Continue from last instance")
+parser.add_argument("-h", "--hardware", type=str, default="pc", help="pc, slurm")
 
 args = parser.parse_args()
 
@@ -32,14 +36,21 @@ scheduler = args.scheduler
 steps = args.steps
 continued = args.continued
 
+
 match os.cpu_count():
     case None:  torch.set_num_threads(1)
     case u:     torch.set_num_threads(u)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+lettres = string.ascii_letters
+alea = ''.join(random.choice(lettres) for _ in range(10)) if continued == "" else continued
+print(f"Séquence aléatoire: {alea}")
 
-work_dir = os.path.join("results", "tree", args.problem)
-os.makedirs(work_dir, exist_ok=True)
+work_dir = os.path.join("results", "tree", alea, args.problem)
+
+
+
+
 
 
 MAX_CURRENT_PROCESSES = 3
@@ -48,6 +59,13 @@ list_processes = []
 def slurm_check():
     global list_processes
     global MAX_CURRENT_PROCESSES
+
+    with open(max_current_processes_file, "r") as f:
+        new_max_current_processes = int(f.read())
+        if new_max_current_processes != MAX_CURRENT_PROCESSES:
+            print(f"MAX_CURRENT_PROCESSES changed from {MAX_CURRENT_PROCESSES} to {new_max_current_processes}")
+            MAX_CURRENT_PROCESSES = new_max_current_processes
+
 
     running_count = 0
     for p in list_processes:
@@ -60,7 +78,8 @@ def slurm_check():
 
 if __name__ == "__main__":
 
-    if not continued:
+    if not os.path.exists(work_dir):
+        os.makedirs(work_dir, exist_ok=True)
         p_model = list_models[args.problem]
         time_bounds = p_model["bounds"][0]
         spatial_bounds = p_model["bounds"][1:]
@@ -120,12 +139,23 @@ if __name__ == "__main__":
                         #extract alea from edge_path
                         alea = edge_path.split("_")[-1].split(".")[0]
                         alea = dir+str(alea)
-                        command_list = [
-                            "python", "-m", "experiments.tree.run",
-                            "-path", path,
-                            "-edge", edge_path,
-                            "-alea", alea
-                        ]
+
+                        if args.hardware == "pc":
+                            command_list = [
+                                "python", "-m", "experiments.tree.run",
+                                "-path", path,
+                                "-edge", edge_path,
+                                "-alea", alea
+                            ]
+
+                        else:
+                            command_list = [
+                                "srun", "-u", "--gres=gpu:1", "--partition=besteffort", 
+                                "python", "-m", "experiments.tree.run",
+                                "-path", path,
+                                "-edge", edge_path,
+                                "-alea", alea
+                            ] 
                         # Lancement de la commande en mode non bloquant
                         while not slurm_check():
                             sleep(10.)

@@ -34,6 +34,7 @@ def ensure_activity(stop_signal: threading.Event):
         os.remove(edge_path+".using")
 
 if __name__ == "__main__":
+    print(f"Executing run.py: path='{path}', edge_path='{edge_path}', alea='{alea}'")
     stop_event = threading.Event()
     
     #lancer ensure_activity en parallele

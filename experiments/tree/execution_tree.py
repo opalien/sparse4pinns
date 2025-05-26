@@ -142,7 +142,7 @@ class ExecutionTree:
         edge_proto: tuple[str, str] | None = None
         parent: Node | None = None
         for parent in reversed(self.nodes):
-            if len(parent.possibles_edges) == 0 or parent.current_steps >= self.n_steps:
+            if len(parent.possibles_edges) == 0 or parent.current_steps >= (self.n_steps+100):
                 continue
             edge_proto = parent.possibles_edges.pop()
             break
@@ -161,6 +161,7 @@ class ExecutionTree:
         
         model: AnyPINN = cast(AnyPINN, convert(copy.deepcopy(edge.parent.pinn), edge.parent.factor, edge.factor ))
 
+        print(model)
         error = ""
         if edge.optimizer == "lbfgs":
             optimizer = optimizers[edge.optimizer](
@@ -176,12 +177,14 @@ class ExecutionTree:
             try:
                 train_losses, _, _, test_losses, times = train_lbfgs(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
             except Exception as e:
-
+                edge.child.pinn = None
                 edge.child.pinn = None
                 edge.child.possibles_edges = []
                 print(f"Error training with LBFGS: {e}, leaf deleted")
                 error = str(e)
                 train_losses, test_losses, times = None, None, None
+                import time
+                time.sleep(10.)
                 exit(0) # ANUULATE THE TREE -> it will be relaunched
         else:
             optimizer = optimizers[edge.optimizer](model.parameters(), lr=0.001)
@@ -193,6 +196,8 @@ class ExecutionTree:
                 print(f"Error training with {edge.optimizer}: {e}, leaf deleted")
                 error = str(e)
                 train_losses, test_losses, times = None, None, None
+                import time
+                time.sleep(10.)
                 exit(0) # ANUULATE THE TREE
 
         model.to(self.buffer_device)
@@ -240,6 +245,7 @@ class ExecutionTree:
 
         if edge is not None:
             if (edge.factor, edge.optimizer) not in monoid_phases(self.monoid_sequence):
+                print(f"Monoid sequence: {self.monoid_sequence+[(edge.factor, edge.optimizer)]} not validated")
                 return    
             self.monoid_sequence.append((edge.factor, edge.optimizer))
 
@@ -254,11 +260,14 @@ class ExecutionTree:
 
         edges = self.get_all_edges()
         print(f"edges: {edges}")
-        pickle.dump(self, open(os.path.join(self.work_dir, f"tree.pkl"), "wb"))
+        
         match len(edges):
             case 0:
+                self.train_dataloader = None
+                self.test_dataloader = None
                 save_result(os.path.join(self.work_dir, f"infos.json"), {"is_leaf": True, "monoid_sequence": self.monoid_sequence})
             case _:
+                pickle.dump(self, open(os.path.join(self.work_dir, f"tree.pkl"), "wb"))
                 os.makedirs(os.path.join(self.work_dir, "edges"), exist_ok=True)
                 for i, edge in enumerate(edges):                    
                     pickle.dump(edge, open(os.path.join(self.work_dir, "edges", f"edges_{i}.pkl"), "wb"))
