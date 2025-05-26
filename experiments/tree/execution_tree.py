@@ -260,6 +260,13 @@ class ExecutionTree:
 
         edges = self.get_all_edges()
         print(f"edges: {edges}")
+
+        edges_to_add=  []
+        for edge in edges:
+            if (edge.factor, edge.optimizer) in monoid_phases(self.monoid_sequence):
+                edges_to_add.append(edge)
+            
+        edges = edges_to_add
         
         match len(edges):
             case 0:
