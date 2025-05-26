@@ -24,7 +24,7 @@ parser.add_argument("-k", "--k_layers", type=int, default=1, help="Un nombre (d�
 parser.add_argument("-s", "--scheduler", type=str, default="linear", help="log, linear (défaut: linear)")
 parser.add_argument("-p", "--steps", type=int, default=2, help="Un nombre (défaut: 2)")
 parser.add_argument("-c", "--continued", type=str, default="", help="Continue from last instance")
-parser.add_argument("-h", "--hardware", type=str, default="pc", help="pc, slurm")
+parser.add_argument("-y", "--hardware", type=str, default="pc", help="pc, slurm")
 
 args = parser.parse_args()
 
@@ -60,7 +60,7 @@ def slurm_check():
     global list_processes
     global MAX_CURRENT_PROCESSES
 
-    with open(max_current_processes_file, "r") as f:
+    with open("max_current_processes_file", "r") as f:
         new_max_current_processes = int(f.read())
         if new_max_current_processes != MAX_CURRENT_PROCESSES:
             print(f"MAX_CURRENT_PROCESSES changed from {MAX_CURRENT_PROCESSES} to {new_max_current_processes}")

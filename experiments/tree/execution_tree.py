@@ -142,7 +142,7 @@ class ExecutionTree:
         edge_proto: tuple[str, str] | None = None
         parent: Node | None = None
         for parent in reversed(self.nodes):
-            if len(parent.possibles_edges) == 0 or parent.current_steps >= (self.n_steps+100):
+            if len(parent.possibles_edges) == 0 or parent.current_steps >= (self.n_steps):
                 continue
             edge_proto = parent.possibles_edges.pop()
             break
