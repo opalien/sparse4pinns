@@ -72,7 +72,7 @@ if __name__ == "__main__":
         pickle.dump(tree, open(os.path.join(path, "tree.pkl"), "wb"))
         del tree
 
-    
+        
 
 
     #arreter ensure_activityquand les calculs sont finis

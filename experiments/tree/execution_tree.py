@@ -14,6 +14,8 @@ import copy
 from typing import cast
 import pickle
 
+from experiments.tree.monoid import monoid_phases
+
 
 
 optimizers = {
@@ -48,6 +50,7 @@ class Edge:
 
     def __str__(self):
         return f"Edge(parent_id={self.parent_id}, child_id={self.child_id}, factor={self.factor}, optimizer={self.optimizer}, epoch={self.epoch})"
+
 
 
 class ExecutionTree:
@@ -100,6 +103,8 @@ class ExecutionTree:
         self.train_dataloader = train_dataloader
         self.test_dataloader = test_dataloader
 
+        self.monoid_sequence = []
+
     
     def set_alea(self, alea: str):
         self.alea = alea
@@ -137,7 +142,7 @@ class ExecutionTree:
         edge_proto: tuple[str, str] | None = None
         parent: Node | None = None
         for parent in reversed(self.nodes):
-            if len(parent.possibles_edges) == 0:
+            if len(parent.possibles_edges) == 0 or parent.current_steps >= self.n_steps:
                 continue
             edge_proto = parent.possibles_edges.pop()
             break
@@ -171,11 +176,13 @@ class ExecutionTree:
             try:
                 train_losses, _, _, test_losses, times = train_lbfgs(model, self.train_dataloader, optimizer, self.device, edge.epoch, self.test_dataloader)
             except Exception as e:
+
                 edge.child.pinn = None
                 edge.child.possibles_edges = []
                 print(f"Error training with LBFGS: {e}, leaf deleted")
                 error = str(e)
                 train_losses, test_losses, times = None, None, None
+                exit(0) # ANUULATE THE TREE -> it will be relaunched
         else:
             optimizer = optimizers[edge.optimizer](model.parameters(), lr=0.001)
             try:
@@ -186,6 +193,7 @@ class ExecutionTree:
                 print(f"Error training with {edge.optimizer}: {e}, leaf deleted")
                 error = str(e)
                 train_losses, test_losses, times = None, None, None
+                exit(0) # ANUULATE THE TREE
 
         model.to(self.buffer_device)
         edge.child.pinn = model
@@ -228,7 +236,13 @@ class ExecutionTree:
 
     def one_step(self, edge: Edge | None = None):        
         
+        
+
         if edge is not None:
+            if (edge.factor, edge.optimizer) not in monoid_phases(self.monoid_sequence):
+                return    
+            self.monoid_sequence.append((edge.factor, edge.optimizer))
+
             dict_model = self.train_one_step(edge)
             save_result(os.path.join(self.work_dir, f"results.json"), dict_model)
 
@@ -243,12 +257,12 @@ class ExecutionTree:
         pickle.dump(self, open(os.path.join(self.work_dir, f"tree.pkl"), "wb"))
         match len(edges):
             case 0:
-                save_result(os.path.join(self.work_dir, f"infos.json"), {"is_leaf": True})
+                save_result(os.path.join(self.work_dir, f"infos.json"), {"is_leaf": True, "monoid_sequence": self.monoid_sequence})
             case _:
                 os.makedirs(os.path.join(self.work_dir, "edges"), exist_ok=True)
                 for i, edge in enumerate(edges):                    
                     pickle.dump(edge, open(os.path.join(self.work_dir, "edges", f"edges_{i}.pkl"), "wb"))
-                save_result(os.path.join(self.work_dir, f"infos.json"), {"is_leaf": False})
+                save_result(os.path.join(self.work_dir, f"infos.json"), {"is_leaf": False, "monoid_sequence": self.monoid_sequence})
 
 
         with open(os.path.join(self.work_dir, f"finished"), 'w') as _:
