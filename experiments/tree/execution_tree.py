@@ -9,13 +9,15 @@ from typing import Callable
 from typing import cast
 from typing import Any
 from core.utils.convert import convert
+from core.utils.save import save_result
 import copy
 
 from core.datasets.pinn_dataset import PINNDataloader
 from core.models.pinn import PINN
 from examples.any.model import AnyPINN
+from core.utils.train import train, train_lbfgs
 
-from experiments.tree.tree_elements import Node, Edge
+from experiments.tree.tree_elements import Node
 
 
 optimizers = {
@@ -45,9 +47,19 @@ class ExecutionTree:
         self.steps = steps
 
         self.possible_params: list[tuple[str, str]] = list(itertools.product(factors, optimizers.keys())) 
+
         
-        self.nodes: list[Node] = [Node(pinn, 0, 0, self.possibles_edges, 0, "linear")] # type: ignore
-        self.edges: list[Edge] = []
+        node0 = Node(pinn=pinn,
+                     total_epoch=0,
+                     id=0,
+                     possibles_params=self.possible_params,
+                     current_steps=0,
+                     factor="linear",
+                     optimizer="adam",
+                     parent=None,
+                     epoch=0)
+
+        self.nodes: list[Node] = [node0]
 
 
         self.buffer_device = torch.device("cpu")
@@ -60,7 +72,7 @@ class ExecutionTree:
 
 
 
-    def get_next_edge(self):
+    def get_next_node(self):
         params: tuple[str, str] | None = None
         parent: Node | None = None
         for parent in reversed(self.nodes):
@@ -69,29 +81,94 @@ class ExecutionTree:
             params = parent.possibles_params.pop(0)
             break
 
-        if params is None or parent is None:
+        if params is None or parent is None or parent.pinn is None:
             return None
         
+        #model = cast(AnyPINN, convert(copy.deepcopy(parent.pinn), parent.factor, params[0] ))
 
-        model = cast(AnyPINN, convert(copy.deepcopy(parent.pinn), parent.factor, params[0] ))
-
-        child = Node(
-            pinn=model,
+        return Node(
+            pinn=None,
             total_epoch=parent.total_epoch + self.epochs[parent.current_steps],
             id=len(self.nodes),
             possibles_params=self.possible_params,
             current_steps=parent.current_steps + 1,
-            factor=params[0]
-        )
-
-        return Edge(
-            parent=parent,
-            child=child,
             factor=params[0],
             optimizer=params[1],
-            epoch=self.epochs[parent.current_steps]
+            parent=parent,
+            epoch= self.epochs[parent.current_steps+1]
         )
 
 
-    def 
+    def train_one_step(self, node: Node):
+        
+        if node.pinn is None:
+            raise ValueError("Node must have a pinn and an optimizer set before training.")
+        
+        error = ""
+        match node.optimizer:
+            case "adam":
+                optimizer = optimizers[node.optimizer](node.pinn.parameters(), lr=0.001)
+
+                try:
+                    train_losses, _, _, test_losses, times = train(node.pinn, self.train_dataloader, optimizer, self.device, node.epoch, self.test_dataloader)
+                except Exception as e:
+                    print(f"Error during training with Adam: {e}")
+                    return None
+
+
+            case "lbfgs":
+                optimizer = optimizers[node.optimizer](
+                    node.pinn.parameters(),
+                    lr=1.0,
+                    max_iter=10,
+                    max_eval=20,
+                    tolerance_grad=1e-7,
+                    tolerance_change=1e-9,
+                    history_size=150,
+                    line_search_fn="strong_wolfe"
+                )
+
+                try:
+                    train_losses, _, _, test_losses, times = train_lbfgs(node.pinn, self.train_dataloader, optimizer, self.device, node.epoch, self.test_dataloader)
+                except Exception as e:
+                    print(f"Error during training with LBFGS: {e}")
+                    return None
+                
+            case _:
+                raise ValueError(f"Unknown optimizer: {node.optimizer}")
+            
+        
+        node.pinn.to(self.buffer_device)
+        return {
+            "train_losses": train_losses,
+            "test_losses": test_losses,
+            "times": times,
+            "n": node.pinn.layers[0].out_features,
+            "k": len(node.pinn.layers),
+            "layers": str(node.pinn.layers),
+            "factor": node.factor,
+            "optimizer": node.optimizer,
+            "epoch": node.epoch,
+            "total_epoch": node.total_epoch,
+            "parent_id": node.parent.id if node.parent is not None else -1,
+            "child_id": node.id,
+            "error": error
+        }
+    
+
+    def run(self):
+        while (node:= self.get_next_node()) is not None:
+            if not self.language(node.get_word()):
+                continue
+
+            node.set_model()
+            while (results:=self.train_one_step(node)) is None:
+                print(f"Error during training of node {node.id}, retrying with a new model.")
+                node.set_model()
+            
+            node.id = len(self.nodes)
+            results["child_id"] = node.id
+            self.nodes.append(node)
+            save_result(os.path.join(self.work_dir, f"results.json"), results)
+
 
