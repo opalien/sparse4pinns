@@ -49,16 +49,37 @@ class PINN(nn.Module):
         u_pred = self.u_pred if u_pred is None else u_pred
         if u_pred is None or self.a_in is None:
             raise ValueError("Call forward before calling J_u")
-        
-        J = torch.autograd.grad(
-            outputs=u_pred,
-            inputs=self.a_in,
-            grad_outputs=torch.ones_like(u_pred),
-            create_graph=True,
-            retain_graph=True,
-        )[0]
 
-        return J[-u_pred.size(0):] if u_pred.size(0) > 0 else J
+        B, O_dim = u_pred.shape
+        if self.a_in.shape[0] != B:
+            raise ValueError(f"Batch size mismatch between u_pred ({B}) and self.a_in ({self.a_in.shape[0]})")
+        
+        I_dim = self.a_in.shape[1]
+
+        jacobian_components: list[Tensor] = []
+        for i in range(O_dim):
+            output_component = u_pred[:, i]
+            
+            grad_outputs_i = torch.ones_like(output_component, device=u_pred.device)
+            
+            grad_result = torch.autograd.grad(
+                outputs=output_component,
+                inputs=self.a_in,
+                grad_outputs=grad_outputs_i,
+                create_graph=True,
+                retain_graph=True,
+                allow_unused=True
+            )
+            grad_i = grad_result[0]
+
+            if grad_i is None:
+                grad_i = torch.zeros((B, I_dim), device=self.a_in.device, dtype=self.a_in.dtype)
+            
+            jacobian_components.append(grad_i)
+
+        J = torch.stack(jacobian_components, dim=1)
+        
+        return J
     
 
     def H_u(self, u_pred: Tensor | None = None) -> Tensor:
@@ -66,46 +87,56 @@ class PINN(nn.Module):
         if u_pred is None or self.a_in is None:
             raise ValueError("Call forward before calling H_u")
         
-        J = self.J_u(u_pred)
-        _, I = self.a_in.shape
-        H_cols: list[Tensor]  =[]
-
-        for j in range(I):
-            grad_compoment = J[:,j]
-
-            H_col = torch.autograd.grad(
-                outputs=grad_compoment,
-                inputs=self.a_in,
-                grad_outputs=torch.ones_like(grad_compoment),
-                create_graph=True,
-                retain_graph=True,
-                allow_unused=True,
-            )[0]
-
-            #if H_col is None:
-            #    H_col = torch.zeros(B, I, device=self.a_in.device)
-            #
-            H_cols.append(H_col)
+        J = self.J_u(u_pred) 
         
-        H = torch.stack(H_cols, dim=2)
-        return H[-u_pred.size(0):] if u_pred.size(0) > 0 else H
+        B, O_dim, I_dim = J.shape
+        
+        hessians_for_outputs: list[Tensor] = []
+
+        for o in range(O_dim):
+            J_o = J[:, o, :]
+            
+            H_o_cols: list[Tensor] = []
+            for i in range(I_dim):
+                grad_component_J_o_i = J_o[:, i]
+                
+                grad_result = torch.autograd.grad(
+                    outputs=grad_component_J_o_i,
+                    inputs=self.a_in,
+                    grad_outputs=torch.ones_like(grad_component_J_o_i, device=self.a_in.device),
+                    create_graph=True,
+                    retain_graph=True,
+                    allow_unused=True
+                )
+                H_o_col_i = grad_result[0]
+
+                if H_o_col_i is None:
+                    H_o_col_i = torch.zeros((B, I_dim), device=self.a_in.device, dtype=self.a_in.dtype)
+                
+                H_o_cols.append(H_o_col_i)
+            
+            H_o = torch.stack(H_o_cols, dim=2)
+            hessians_for_outputs.append(H_o)
+
+        H = torch.stack(hessians_for_outputs, dim=1)
+        return H
 
 
 
     def du_dt(self, u_pred: Tensor | None = None) -> Tensor:
-        return self.J_u(u_pred)[:, 0]
+        return self.J_u(u_pred)[:, :, 0]
     
 
     def du_dx(self, u_pred: Tensor | None = None) -> Tensor:
-        return self.J_u(u_pred)[:, 1:]
+        return self.J_u(u_pred)[:, :, 1:]
     
 
     def du_dtt(self, u_pred: Tensor | None = None) -> Tensor:
-       return self.H_u(u_pred)[:, 0, 0]
+       return self.H_u(u_pred)[:, :, 0, 0]
    
 
-    def du_dxx(self, u_pred: Tensor | None = None):
-       return torch.diagonal(self.H_u(u_pred), offset=0, dim1=-2, dim2=-1)[:, 1:]
+    def du_dxx(self, u_pred: Tensor | None = None) -> Tensor:
+       return torch.diagonal(self.H_u(u_pred), offset=0, dim1=-2, dim2=-1)[:, :, 1:]
            
 
     def data_loss(self, u_pred: Tensor, u: Tensor)-> Tensor:   
