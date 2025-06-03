@@ -28,14 +28,16 @@ class Node:
 
     def set_model(self):
         if self.parent is not None and self.parent.pinn is not None:
-            self.pinn = cast(AnyPINN, convert(copy.deepcopy(self.parent.pinn), self.factor, self.optimizer))
+            self.pinn = cast(AnyPINN, convert(copy.deepcopy(self.parent.pinn), self.parent.factor, self.factor))
 
     def get_word(self) -> list[tuple[str, str]]:
         match self.parent:
             case None:
-                return [(self.factor, self.optimizer)]
+                return [[self.factor, self.optimizer]]
+            case Node() if self.parent.id <= 0:
+                return [[self.factor, self.optimizer]]
             case Node():
-                return self.parent.get_word() + [(self.factor, self.optimizer)]
+                return self.parent.get_word() + [[self.factor, self.optimizer]]
 
 
     def __str__(self):

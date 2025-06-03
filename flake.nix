@@ -24,7 +24,7 @@
       };
     };
 
-    pythonEnv = pkgs.python312.withPackages (ps: with ps; [ torch numpy ipython scipy einops ipython pip utils matplotlib fenics ]);
+    pythonEnv = pkgs.python313.withPackages (ps: with ps; [ torch numpy ipython scipy einops ipython pip utils matplotlib fenics ]);
 
 
   in {

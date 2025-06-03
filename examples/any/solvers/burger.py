@@ -21,7 +21,7 @@ SOLVER_DIR = os.path.join('examples', 'any', 'solvers')
 
 
 # --- Fonction de Résolution de Burgers (Améliorée) ---
-def solve_burger(T: float=1.0, num_steps: int=500, nu: float=0.01 / math.pi, nx: int=500, output_pickle_file: str='burger_interpolator_p2_cn.pkl') -> Optional[str]:
+def solve_burger(T: float=1.0, num_steps: int=500, nu: float=0.01 / math.pi, nx: int=500, output_pickle_file: str='burger_solution.pkl') -> Optional[str]:
     """
     Résout l'équation de Burgers 1D visqueuse en utilisant FEniCS avec des améliorations:
     - Éléments P2 Lagrange pour une meilleure précision spatiale.

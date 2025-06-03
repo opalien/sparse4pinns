@@ -46,6 +46,8 @@ class ExecutionTree:
         self.epochs = [steps[i] - steps[i - 1] for i in range(1, len(steps))]
         self.steps = steps
 
+        print(f"{self.epochs=}, {self.steps=}")
+
         self.possible_params: list[tuple[str, str]] = list(itertools.product(factors, optimizers.keys())) 
 
         
@@ -53,7 +55,7 @@ class ExecutionTree:
                      total_epoch=0,
                      id=0,
                      possibles_params=self.possible_params,
-                     current_steps=0,
+                     current_steps=-1,
                      factor="linear",
                      optimizer="adam",
                      parent=None,
@@ -76,7 +78,7 @@ class ExecutionTree:
         params: tuple[str, str] | None = None
         parent: Node | None = None
         for parent in reversed(self.nodes):
-            if len(parent.possibles_params) == 0 or parent.current_steps >= self.steps[-1] or parent.pinn is None:
+            if len(parent.possibles_params) == 0 or parent.current_steps+1 >= len(self.epochs) or parent.total_epoch >= self.steps[-1] or parent.pinn is None:
                 continue
             params = parent.possibles_params.pop(0)
             break
@@ -84,7 +86,11 @@ class ExecutionTree:
         if params is None or parent is None or parent.pinn is None:
             return None
         
+
+        print(f"{params=}")
         #model = cast(AnyPINN, convert(copy.deepcopy(parent.pinn), parent.factor, params[0] ))
+
+        print(f"{parent}")
 
         return Node(
             pinn=None,
@@ -158,8 +164,12 @@ class ExecutionTree:
 
     def run(self):
         while (node:= self.get_next_node()) is not None:
+            print(f"{node.get_word()=}")
             if not self.language(node.get_word()):
+                print(f"Skipping node {node.id} due to language constraints.")
                 continue
+
+            print(f"training {node}")
 
             node.set_model()
             while (results:=self.train_one_step(node)) is None:
