@@ -1,0 +1,43 @@
+
+\subsection{Example (Shr\"{o}dinger Equation)} \label{sec:schrodinger_CT}
+This example aims to highlight the ability of our method to handle periodic boundary conditions, complex-valued solutions, as well as different types of nonlinearities in the governing partial differential equations. The one-dimensional nonlinear Schr\"{o}dinger equation is a classical field equation that is used to study quantum mechanical systems, including nonlinear wave propagation in optical fibers and/or waveguides, Bose-Einstein condensates, and plasma waves. In optics, the nonlinear term arises from the intensity dependent index of refraction of a given material. Similarly, the nonlinear term for Bose-Einstein condensates is a result of the mean-field interactions of an interacting, N-body system. The nonlinear Schr\"{o}dinger equation along with periodic boundary conditions is given by
+\begin{eqnarray}\label{eq:Schrodinger}
+&& i h_t + 0.5 h_{xx} + |h|^2 h = 0,\ \ \ x \in [-5, 5],\ \ \ t \in [0, \pi/2],\\
+&& h(0,x) = 2\ \text{sech}(x),\nonumber\\
+&& h(t,-5) = h(t, 5),\nonumber\\
+&& h_x(t,-5) = h_x(t, 5),\nonumber
+\end{eqnarray}
+where $h(t,x)$ is the complex-valued solution. Let us define $f(t,x)$ to be given by
+\[
+f := i h_t + 0.5 h_{xx} + |h|^2 h,
+\]
+and proceed by placing a complex-valued neural network prior on $h(t,x)$. In fact, if $u$ denotes the real part of $h$ and $v$ is the imaginary part, we are placing a multi-out neural network prior on $h(t,x) = \begin{bmatrix}
+u(t,x) & v(t,x)
+\end{bmatrix}$. This will result in the complex-valued (multi-output) \emph{physic informed neural network} $f(t,x)$. The shared parameters of the neural networks $h(t,x)$ and $f(t,x)$ can be learned by minimizing the mean squared error loss
+\begin{equation}\label{eq:MSE_Schrodinger}
+MSE = MSE_0 + MSE_b + MSE_f,
+\end{equation}
+where
+\[
+MSE_0 = \frac{1}{N_0}\sum_{i=1}^{N_0} |h(0,x_0^i) - h^i_0|^2,
+\]
+\[
+MSE_b = \frac{1}{N_b}\sum_{i=1}^{N_b} \left(|h^i(t^i_b,-5) - h^i(t^i_b,5)|^2 + |h^i_x(t^i_b,-5) - h^i_x(t^i_b,5)|^2\right),
+\]
+and
+\[
+MSE_f = \frac{1}{N_f}\sum_{i=1}^{N_f}|f(t_f^i,x_f^i)|^2.
+\]
+Here, $\{x_0^i, h^i_0\}_{i=1}^{N_0}$ denotes the initial data, $\{t^i_b\}_{i=1}^{N_b}$ corresponds to the collocation points on the boundary, and $\{t_f^i,x_f^i\}_{i=1}^{N_f}$ represents the collocation points on $f(t,x)$. Consequently, $MSE_0$ corresponds to the loss on the initial data, $MSE_b$ enforces the periodic boundary conditions, and $MSE_f$ penalizes the Schr\"{o}dinger equation not being satisfied on the collocation points.\\
+
+In order to assess the accuracy of our method, we have simulated equation \eqref{eq:Schrodinger} using conventional spectral methods to create a high-resolution data set. Specifically, starting from an initial state $h(0,x) = 2\ \text{sech}(x)$ and assuming periodic boundary conditions $h(t,-5) = h(t,5)$ and $h_x(t,-5) = h_x(t,5)$, we have integrated equation \eqref{eq:Schrodinger} up to a final time $t=\pi/2$ using the Chebfun package \cite{driscoll2014chebfun} with a spectral Fourier discretization with 256 modes and a fourth-order explicit Runge-Kutta temporal integrator with time-step $\Delta{t} = \pi/2 \cdot 10^{-6}$. Under our data-driven setting, all we observe are measurements $\{x_0^i, h^i_0\}_{i=1}^{N_0}$ of the latent function $h(t,x)$ at time $t=0$. In particular, the training set consists of a total of $N_0 = 50$ data points on $h(0,x)$ randomly parsed from the full high-resolution data-set, as well as $N_b = 50$ randomly sampled collocation points $\{t^i_b\}_{i=1}^{N_b}$ for enforcing the periodic boundaries. Moreover, we have assumed $N_f=20,000$ randomly sampled collocation points used to enforce equation \eqref{eq:Schrodinger} inside the solution domain. All randomly sampled point locations were generated using a space filling Latin Hypercube Sampling strategy \cite{stein1987large}.\\
+
+Here our goal is to infer the entire spatio-temporal solution $h(t,x)$ of the Schr\"{o}dinger equation (\ref{eq:Schrodinger}). We chose to jointly represent the latent function $h(t,x) = [u(t,x)\ v(t,x)]$ using a 5-layer deep neural network with $100$ neurons per layer and a hyperbolic tangent activation function. Figure \ref{fig:NLS} summarizes the results of our experiment. Specifically, the top panel of figure \ref{fig:NLS} shows the magnitude of the predicted spatio-temporal solution $|h(t,x)|=\sqrt{u^2(t,x) + v^2(t,x)}$, along with the locations of the initial and boundary training data. The resulting prediction error is validated against the test data for this problem, and is measured at $1.97 \cdot 10^{-3}$ in the relative $\mathcal{L}_2$-norm. A more detailed assessment of the predicted solution is presented in the bottom panel of Figure~\ref{fig:NLS}. In particular, we present a comparison between the exact and the predicted solutions at different time instants $t=0.59,0.79,0.98$. Using only a handful of initial data, the {\em physics informed neural network} can accurately capture the intricate nonlinear behavior of the Schr\"{o}dinger equation.\\
+
+\begin{figure}[!t]
+\includegraphics[width = 1.0\textwidth]{NLS.pdf}
+\caption{{\em Shr\"{o}dinger equation:} {\it Top:} Predicted solution $|h(t,x)|$ along with the initial and boundary training data. In addition we are using 20,000 collocation points generated using a Latin Hypercube Sampling strategy. {\it Bottom:} Comparison of the predicted and exact solutions corresponding to  the three temporal snapshots depicted by the dashed vertical lines in the top panel. The relative $\mathcal{L}_{2}$ error for this case is $1.97 \cdot 10^{-3}$.}
+\label{fig:NLS}
+\end{figure}
+
+One potential limitation of the continuous time neural network models considered so far, stems from the need to use a large number of collocation points $N_f$ in order to enforce physics informed constraints in the entire spatio-temporal domain. Although this poses no significant issues for problems in one or two spatial dimensions, it may introduce a severe bottleneck in higher dimensional problems, as the total number of collocation points needed to globally enforce a physics informed constrain (i.e., in our case a partial differential equation) will increase exponentially. In the next section, we put forth a different approach that circumvents the need for collocation points by introducing a more structured neural network representation leveraging the classical Runge-Kutta time-stepping schemes \cite{iserles2009first}.

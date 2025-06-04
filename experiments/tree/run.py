@@ -1,5 +1,10 @@
 from torch import nn
 import torch
+import sys
+import os
+
+# Add the root directory to sys.path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../')))
 
 from examples.any.list_models import list_models
 
@@ -70,11 +75,13 @@ if __name__ == '__main__':
     train_dataloader  = train_dataset.get_dataloader(1000)
     test_dataloader = test_dataset.get_dataloader(1000)
 
+    # Determine output dimension based on problem type
+    output_dim = 2 if args.problem == "schrodinger" else 1
 
     layers = [
         nn.Linear(2, n),
         *[nn.Linear(n, n) for _ in range(k)],
-        nn.Linear(n, 1),
+        nn.Linear(n, output_dim),
     ]
 
     linear_model = AnyPINN(layers, p_model["pde"])
@@ -86,7 +93,7 @@ if __name__ == '__main__':
         test_dataloader=test_dataloader,
         device=device,
         work_dir=os.path.join("results", "tree"),
-        steps=[i*4 for i in range(4)],
+        steps=[i*4 for i in range(5)],  # Changed to range(5) to get [0, 4, 8, 12, 16] = 4 intervals
         alea=alea,
         language=language
     )

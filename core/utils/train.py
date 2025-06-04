@@ -169,7 +169,7 @@ def train_one_epoch(model: PINN, train_loader: PINNDataloader, optimizer: Optimi
 
         loss = model.loss(u, idx)
         pde_loss = model.get_pde_loss()
-        data_loss = model.get_pde_loss()
+        data_loss = model.get_data_loss()
 
         
         if torch.isnan(loss) or torch.isinf(loss):

@@ -55,7 +55,7 @@ if __name__ == "__main__":
     
         linear_model = SimplePINN(layers)
         optimizer = torch.optim.Adam(linear_model.parameters(), lr=0.001)
-        train_losses_linear, _, _, test_losses_linear, times_linear = train(linear_model, train_dataloader, optimizer, device, 0, test_dataloader)
+        train_losses_linear, _, _, test_losses_linear, times_linear = train(linear_model, train_dataloader, optimizer, device, 100, test_dataloader)
         print("linear_model trained")
 
         t0 = time.time()
