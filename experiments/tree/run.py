@@ -17,10 +17,6 @@ import json
 
 from experiments.tree.execution_tree import ExecutionTree
 
-match os.cpu_count():
-    case None:  torch.set_num_threads(1)
-    case n:     torch.set_num_threads(n)
-
 
 parser = argparse.ArgumentParser(description="PDE solving.")
 parser.add_argument("problem", help="The pde to solve")
