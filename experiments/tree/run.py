@@ -34,6 +34,7 @@ save_path = os.path.join("results", "tree", f'results_{alea}.json')
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 x = torch.randn(1, 2).to(device)
 
 p_model = list_models[args.problem]
