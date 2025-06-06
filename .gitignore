@@ -18,3 +18,4 @@ experiments/any/params
 *.tiff
 *.ico
 *.webp
+*results*.json
