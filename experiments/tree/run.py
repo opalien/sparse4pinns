@@ -82,7 +82,7 @@ if __name__ == '__main__':
         test_dataloader=test_dataloader,
         device=device,
         work_dir=os.path.join("results", "tree"),
-        steps=[i*4 for i in range(4)],
+        steps=[i*500 for i in range(4)],
         alea=alea,
         language=language
     )
