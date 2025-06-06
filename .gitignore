@@ -5,7 +5,6 @@ __pycache__/
 *.plk
 *.pkl
 *.venv
-*.json
 *.jsonl
 *.idea
 project.txt
