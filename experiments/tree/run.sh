@@ -1,7 +1,6 @@
 #!/bin/bash
-#SBATCH --array=0-10%6
+#SBATCH --array=0-100%5
 #SBATCH --job-name=sparse4pinn
-#SBATCH --partition=gpu
 #SBATCH --nodes=1                # nombre de noeuds
 #SBATCH --ntasks=1               # nombre total de tâches sur tous les nœuds
 #SBATCH --cpus-per-task=1
@@ -41,7 +40,7 @@ echo "$PARAMS_ID|$JOB_NAME|$SLURM_SUBMIT_DIR" >> $RUNLOG_FILE
 
 PARAMS=$(tail -n +${PARAMS_ID} ${PARAMS_FILE} | head -n 1)
 
-CMD=$"srun python -m experiments.tree.run ${PARAMS}"
+CMD=$"srun python -m experiments.tree.run -m 6 -k 10 -l language_augmented.json ${PARAMS}"
 
 echo "start"
 ml python/3.12
