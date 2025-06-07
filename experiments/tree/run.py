@@ -28,7 +28,7 @@ args = parser.parse_args()
 
 
 lettres = string.ascii_letters
-alea = ''.join(random.choice(lettres) for _ in range(10))
+alea = 'monoid_'.join(random.choice(lettres) for _ in range(10))
 print(f"Séquence aléatoire générée: {alea}")
 save_path = os.path.join("results", "tree", f'results_{alea}.json')
 
