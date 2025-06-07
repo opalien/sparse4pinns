@@ -40,7 +40,7 @@ echo "$PARAMS_ID|$JOB_NAME|$SLURM_SUBMIT_DIR" >> $RUNLOG_FILE
 
 PARAMS=$(tail -n +${PARAMS_ID} ${PARAMS_FILE} | head -n 1)
 
-CMD=$"srun python -m experiments.tree.run -m 6 -k 10 -l language_monoid.json ${PARAMS}"
+CMD=$"srun python -m experiments.tree.run burger -m 6 -k 10 -l language_monoid.json ${PARAMS}"
 
 echo "start"
 ml python/3.12
